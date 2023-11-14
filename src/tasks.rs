@@ -7,9 +7,8 @@ use log::info;
 use tokio::time::{self, Instant};
 
 use crate::model::PluginState;
-use crate::util::{
-    del_datastore_htlc_expiry, del_datastore_state, listdatastore_all, listinvoices, make_rpc_path,
-};
+use crate::rpc::{del_datastore_htlc_expiry, del_datastore_state, listdatastore_all, listinvoices};
+use crate::util::make_rpc_path;
 
 pub async fn autoclean_holdinvoice_db(plugin: Plugin<PluginState>) -> Result<(), Error> {
     time::sleep(Duration::from_secs(60)).await;

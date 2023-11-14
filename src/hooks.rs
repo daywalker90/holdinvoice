@@ -16,14 +16,17 @@ use log::{debug, info, warn};
 use serde_json::json;
 use tokio::time::{self};
 
-use crate::util::{
-    cleanup_pluginstate_holdinvoices, datastore_htlc_expiry, datastore_update_state,
-    listdatastore_state, listinvoices, make_rpc_path, CANCEL_HOLD_BEFORE_HTLC_EXPIRY_BLOCKS,
-};
-use crate::Holdstate;
 use crate::{
-    model::{HoldHtlc, HoldInvoice, HtlcIdentifier, PluginState},
-    util::CANCEL_HOLD_BEFORE_INVOICE_EXPIRY_SECONDS,
+    model::{
+        HoldHtlc, HoldInvoice, HtlcIdentifier, PluginState, CANCEL_HOLD_BEFORE_HTLC_EXPIRY_BLOCKS,
+        CANCEL_HOLD_BEFORE_INVOICE_EXPIRY_SECONDS,
+    },
+    rpc::{datastore_update_state, listdatastore_state},
+};
+use crate::{rpc::datastore_htlc_expiry, Holdstate};
+use crate::{
+    rpc::listinvoices,
+    util::{cleanup_pluginstate_holdinvoices, make_rpc_path},
 };
 
 pub async fn htlc_handler(

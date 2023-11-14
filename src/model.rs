@@ -3,15 +3,73 @@ use std::{
     sync::Arc,
 };
 
+use crate::pb::Amount;
 use crate::{pb, tls::Identity};
-use crate::{pb::Amount, Holdstate};
+use anyhow::anyhow;
 use bitcoin::hashes::sha256::Hash as Sha256;
+use cln_plugin::Error;
 use cln_rpc::{
     model::responses::ListinvoicesInvoices,
     primitives::{Secret, ShortChannelId},
 };
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
+use std::fmt;
+use std::str::FromStr;
+
+pub const HOLD_INVOICE_PLUGIN_NAME: &str = "holdinvoice";
+pub const HOLD_INVOICE_DATASTORE_STATE: &str = "state";
+pub const HOLD_INVOICE_DATASTORE_HTLC_EXPIRY: &str = "expiry";
+pub const CANCEL_HOLD_BEFORE_INVOICE_EXPIRY_SECONDS: u64 = 1_800;
+pub const CANCEL_HOLD_BEFORE_HTLC_EXPIRY_BLOCKS: u32 = 6;
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum Holdstate {
+    Open,
+    Settled,
+    Canceled,
+    Accepted,
+}
+impl Holdstate {
+    pub fn as_i32(&self) -> i32 {
+        match self {
+            Holdstate::Open => 0,
+            Holdstate::Settled => 1,
+            Holdstate::Canceled => 2,
+            Holdstate::Accepted => 3,
+        }
+    }
+    pub fn is_valid_transition(&self, newstate: &Holdstate) -> bool {
+        match self {
+            Holdstate::Open => !matches!(newstate, Holdstate::Settled),
+            Holdstate::Settled => matches!(newstate, Holdstate::Settled),
+            Holdstate::Canceled => matches!(newstate, Holdstate::Canceled),
+            Holdstate::Accepted => !matches!(newstate, Holdstate::Open),
+        }
+    }
+}
+impl fmt::Display for Holdstate {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Holdstate::Open => write!(f, "open"),
+            Holdstate::Settled => write!(f, "settled"),
+            Holdstate::Canceled => write!(f, "canceled"),
+            Holdstate::Accepted => write!(f, "accepted"),
+        }
+    }
+}
+impl FromStr for Holdstate {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "open" => Ok(Holdstate::Open),
+            "settled" => Ok(Holdstate::Settled),
+            "canceled" => Ok(Holdstate::Canceled),
+            "accepted" => Ok(Holdstate::Accepted),
+            _ => Err(anyhow!("could not parse Holdstate from {}", s)),
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct HoldHtlc {
@@ -47,9 +105,11 @@ fn is_none_or_empty<T>(f: &Option<Vec<T>>) -> bool
 where
     T: Clone,
 {
-    // TODO Find a better way to check, possibly without cloning
-    let f = f.clone();
-    f.is_none() || f.unwrap().is_empty()
+    if let Some(inner) = f {
+        inner.is_empty()
+    } else {
+        true
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -185,4 +245,16 @@ impl From<HoldInvoiceResponse> for pb::HoldInvoiceResponse {
             warning_mpp: c.warning_mpp,                // Rule #2 for type string?
         }
     }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct HoldLookupResponse {
+    pub state: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub htlc_expiry: Option<u32>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct HoldStateResponse {
+    pub state: String,
 }

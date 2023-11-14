@@ -1,12 +1,12 @@
 use crate::hold::{hold_invoice, hold_invoice_cancel, hold_invoice_lookup, hold_invoice_settle};
-use crate::model::{self, PluginState};
+use crate::model::{self, Holdstate, PluginState};
 use crate::pb;
 use crate::pb::hold_server::Hold;
-use crate::util::{short_channel_id_to_string, Holdstate};
+use crate::util::u64_to_scid;
 use anyhow::Result;
 use bitcoin::secp256k1::PublicKey;
 use cln_plugin::Plugin;
-use cln_rpc::primitives::{Amount, Routehint, Routehop, ShortChannelId};
+use cln_rpc::primitives::{Amount, Routehint, Routehop};
 use lightning_invoice::{Bolt11Invoice, Bolt11InvoiceDescription, SignedRawBolt11Invoice};
 use log::{debug, trace};
 use std::collections::HashMap;
@@ -266,10 +266,10 @@ impl Hold for Server {
         let mut pb_route_hints = Vec::new();
 
         for hint in &invoice.route_hints() {
-            let mut scid_vec = HashMap::new();
+            let mut scid_map = HashMap::new();
             for hop in &hint.0 {
-                match ShortChannelId::from_str(&short_channel_id_to_string(hop.short_channel_id)) {
-                    Ok(o) => scid_vec.insert(hop.short_channel_id, o),
+                match u64_to_scid(hop.short_channel_id) {
+                    Ok(o) => scid_map.insert(hop.short_channel_id, o),
                     Err(e) => {
                         return Err(Status::new(
                             Code::InvalidArgument,
@@ -283,7 +283,7 @@ impl Hold for Server {
                 .0
                 .iter()
                 .map(|hop| {
-                    let scid = scid_vec.get(&hop.short_channel_id).unwrap();
+                    let scid = scid_map.get(&hop.short_channel_id).unwrap();
                     Routehop {
                         id: PublicKey::from_str(&hop.src_node_id.to_string()).unwrap(),
                         scid: *scid,

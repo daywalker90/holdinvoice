@@ -1,121 +1,28 @@
 use std::collections::BTreeMap;
-use std::fmt;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-use crate::model::PluginState;
-use anyhow::anyhow;
+use crate::errors::*;
+use crate::model::{
+    PluginState, CANCEL_HOLD_BEFORE_HTLC_EXPIRY_BLOCKS, CANCEL_HOLD_BEFORE_INVOICE_EXPIRY_SECONDS,
+};
+
 use cln_plugin::{Error, Plugin};
-use cln_rpc::model::requests::{
-    DatastoreMode, DatastoreRequest, DeldatastoreRequest, ListdatastoreRequest,
-    ListinvoicesRequest, ListpeerchannelsRequest,
-};
-use cln_rpc::{
-    model::responses::{
-        DatastoreResponse, DeldatastoreResponse, ListdatastoreDatastore, ListdatastoreResponse,
-        ListinvoicesResponse, ListpeerchannelsResponse,
-    },
-    ClnRpc, Request, Response,
-};
-
-const HOLD_INVOICE_PLUGIN_NAME: &str = "holdinvoice";
-const HOLD_INVOICE_DATASTORE_STATE: &str = "state";
-const HOLD_INVOICE_DATASTORE_HTLC_EXPIRY: &str = "expiry";
-pub const CANCEL_HOLD_BEFORE_INVOICE_EXPIRY_SECONDS: u64 = 1_800;
-pub const CANCEL_HOLD_BEFORE_HTLC_EXPIRY_BLOCKS: u32 = 6;
-
-use log::debug;
+use cln_rpc::model::requests::InvoiceRequest;
+use cln_rpc::primitives::{Amount, AmountOrAny, ShortChannelId};
+use serde_json::json;
 
 use crate::model::{HoldInvoice, HtlcIdentifier};
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub enum Holdstate {
-    Open,
-    Settled,
-    Canceled,
-    Accepted,
-}
-impl Holdstate {
-    pub fn as_i32(&self) -> i32 {
-        match self {
-            Holdstate::Open => 0,
-            Holdstate::Settled => 1,
-            Holdstate::Canceled => 2,
-            Holdstate::Accepted => 3,
-        }
-    }
-    pub fn is_valid_transition(&self, newstate: &Holdstate) -> bool {
-        match self {
-            Holdstate::Open => !matches!(newstate, Holdstate::Settled),
-            Holdstate::Settled => matches!(newstate, Holdstate::Settled),
-            Holdstate::Canceled => matches!(newstate, Holdstate::Canceled),
-            Holdstate::Accepted => !matches!(newstate, Holdstate::Open),
-        }
-    }
-}
-impl fmt::Display for Holdstate {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Holdstate::Open => write!(f, "open"),
-            Holdstate::Settled => write!(f, "settled"),
-            Holdstate::Canceled => write!(f, "canceled"),
-            Holdstate::Accepted => write!(f, "accepted"),
-        }
-    }
-}
-impl FromStr for Holdstate {
-    type Err = Error;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "open" => Ok(Holdstate::Open),
-            "settled" => Ok(Holdstate::Settled),
-            "canceled" => Ok(Holdstate::Canceled),
-            "accepted" => Ok(Holdstate::Accepted),
-            _ => Err(anyhow!("could not parse Holdstate from {}", s)),
-        }
-    }
-}
-
-pub async fn listinvoices(
-    rpc_path: &PathBuf,
-    label: Option<String>,
-    payment_hash: Option<String>,
-) -> Result<ListinvoicesResponse, Error> {
-    let mut rpc = ClnRpc::new(&rpc_path).await?;
-    let invoice_request = rpc
-        .call(Request::ListInvoices(ListinvoicesRequest {
-            label,
-            invstring: None,
-            payment_hash,
-            offer_id: None,
-            index: None,
-            start: None,
-            limit: None,
-        }))
-        .await
-        .map_err(|e| anyhow!("Error calling listinvoices: {:?}", e))?;
-    match invoice_request {
-        Response::ListInvoices(info) => Ok(info),
-        e => Err(anyhow!("Unexpected result in listinvoices: {:?}", e)),
-    }
-}
-
-pub async fn listpeerchannels(rpc_path: &PathBuf) -> Result<ListpeerchannelsResponse, Error> {
-    let mut rpc = ClnRpc::new(&rpc_path).await?;
-    let list_peer_channels = rpc
-        .call(Request::ListPeerChannels(ListpeerchannelsRequest {
-            id: None,
-        }))
-        .await
-        .map_err(|e| anyhow!("Error calling listpeerchannels: {}", e.to_string()))?;
-    match list_peer_channels {
-        Response::ListPeerChannels(info) => Ok(info),
-        e => Err(anyhow!("Unexpected result in listpeerchannels: {:?}", e)),
-    }
-}
-
 pub fn make_rpc_path(plugin: Plugin<PluginState>) -> PathBuf {
     Path::new(&plugin.configuration().lightning_dir).join(plugin.configuration().rpc_file)
+}
+
+pub fn u64_to_scid(scid: u64) -> Result<ShortChannelId, Error> {
+    let block_height = scid >> 40;
+    let tx_index = (scid >> 16) & 0xFFFFFF;
+    let output_index = scid & 0xFFFF;
+    ShortChannelId::from_str(&format!("{}x{}x{}", block_height, tx_index, output_index))
 }
 
 pub async fn cleanup_pluginstate_holdinvoices(
@@ -131,236 +38,178 @@ pub async fn cleanup_pluginstate_holdinvoices(
     }
 }
 
-async fn datastore_raw(
-    rpc_path: &PathBuf,
-    key: Vec<String>,
-    string: Option<String>,
-    hex: Option<String>,
-    mode: Option<DatastoreMode>,
-    generation: Option<u64>,
-) -> Result<DatastoreResponse, Error> {
-    let mut rpc = ClnRpc::new(&rpc_path).await?;
-    let datastore_request = rpc
-        .call(Request::Datastore(DatastoreRequest {
-            key: key.clone(),
-            string: string.clone(),
-            hex,
-            mode,
-            generation,
+pub fn parse_payment_hash(args: serde_json::Value) -> Result<String, serde_json::Value> {
+    if let serde_json::Value::Array(i) = args {
+        if i.is_empty() {
+            Err(missing_parameter_error("payment_hash"))
+        } else if i.len() != 1 {
+            Err(too_many_params_error(i.len(), 1))
+        } else if let serde_json::Value::String(s) = i.first().unwrap() {
+            if s.len() != 64 {
+                Err(invalid_hash_error("payment_hash", s))
+            } else {
+                Ok(s.clone())
+            }
+        } else {
+            Err(invalid_hash_error(
+                "payment_hash",
+                &i.first().unwrap().to_string(),
+            ))
+        }
+    } else if let serde_json::Value::Object(o) = args {
+        let valid_arg_keys = ["payment_hash"];
+        for (k, _v) in o.iter() {
+            if !valid_arg_keys.contains(&k.as_str()) {
+                return Err(invalid_argument_error(k));
+            }
+        }
+        if let Some(pay_hash) = o.get("payment_hash") {
+            if let serde_json::Value::String(s) = pay_hash {
+                if s.len() != 64 {
+                    Err(invalid_hash_error("payment_hash", s))
+                } else {
+                    Ok(s.clone())
+                }
+            } else {
+                Err(invalid_hash_error("payment_hash", &pay_hash.to_string()))
+            }
+        } else {
+            Err(missing_parameter_error("payment_hash"))
+        }
+    } else {
+        Err(invalid_input_error(&args.to_string()))
+    }
+}
+
+pub fn build_invoice_request(
+    args: &serde_json::Value,
+) -> Result<InvoiceRequest, serde_json::Value> {
+    let amount_msat = if let Some(amt) = args.get("amount_msat") {
+        AmountOrAny::Amount(Amount::from_msat(if let Some(amt_u64) = amt.as_u64() {
+            amt_u64
+        } else {
+            return Err(invalid_integer_error(
+                "amount_msat|msatoshi",
+                &amt.to_string(),
+            ));
         }))
-        .await
-        .map_err(|e| anyhow!("Error calling datastore: {:?}", e))?;
-    debug!("datastore_raw: set {:?} to {}", key, string.unwrap());
-    match datastore_request {
-        Response::Datastore(info) => Ok(info),
-        e => Err(anyhow!("Unexpected result in datastore: {:?}", e)),
-    }
-}
+    } else {
+        return Err(missing_parameter_error("amount_msat|msatoshi"));
+    };
 
-pub async fn datastore_new_state(
-    rpc_path: &PathBuf,
-    pay_hash: String,
-    string: String,
-) -> Result<DatastoreResponse, Error> {
-    datastore_raw(
-        rpc_path,
-        vec![
-            HOLD_INVOICE_PLUGIN_NAME.to_string(),
-            pay_hash,
-            HOLD_INVOICE_DATASTORE_STATE.to_string(),
-        ],
-        Some(string),
-        None,
-        Some(DatastoreMode::MUST_CREATE),
-        None,
-    )
-    .await
-}
+    let label = if let Some(lbl) = args.get("label") {
+        match lbl {
+            serde_json::Value::Number(n) => n.to_string(),
+            serde_json::Value::String(s) => s.as_str().to_string(),
+            e => return Err(invalid_input_error(&e.to_string())),
+        }
+    } else {
+        return Err(missing_parameter_error("label"));
+    };
 
-pub async fn datastore_update_state(
-    rpc_path: &PathBuf,
-    pay_hash: String,
-    string: String,
-    generation: u64,
-) -> Result<DatastoreResponse, Error> {
-    datastore_raw(
-        rpc_path,
-        vec![
-            HOLD_INVOICE_PLUGIN_NAME.to_string(),
-            pay_hash,
-            HOLD_INVOICE_DATASTORE_STATE.to_string(),
-        ],
-        Some(string),
-        None,
-        Some(DatastoreMode::MUST_REPLACE),
-        Some(generation),
-    )
-    .await
-}
+    let description = if let Some(desc) = args.get("description") {
+        match desc {
+            serde_json::Value::Number(n) => n.to_string(),
+            serde_json::Value::String(s) => s.as_str().to_string(),
+            e => return Err(invalid_input_error(&e.to_string())),
+        }
+    } else {
+        return Err(missing_parameter_error("description"));
+    };
 
-pub async fn datastore_update_state_forced(
-    rpc_path: &PathBuf,
-    pay_hash: String,
-    string: String,
-) -> Result<DatastoreResponse, Error> {
-    datastore_raw(
-        rpc_path,
-        vec![
-            HOLD_INVOICE_PLUGIN_NAME.to_string(),
-            pay_hash,
-            HOLD_INVOICE_DATASTORE_STATE.to_string(),
-        ],
-        Some(string),
-        None,
-        Some(DatastoreMode::MUST_REPLACE),
-        None,
-    )
-    .await
-}
+    let expiry = if let Some(exp) = args.get("expiry") {
+        Some(if let Some(exp_u64) = exp.as_u64() {
+            if exp_u64 <= CANCEL_HOLD_BEFORE_INVOICE_EXPIRY_SECONDS {
+                return Err(json!({
+                    "code": -32602,
+                    "message": format!("expiry: needs to be greater than '{}' requested: '{}'",
+                    CANCEL_HOLD_BEFORE_INVOICE_EXPIRY_SECONDS, exp_u64)
+                }));
+            } else {
+                exp_u64
+            }
+        } else {
+            return Err(invalid_integer_error("expiry", &exp.to_string()));
+        })
+    } else {
+        None
+    };
 
-pub async fn datastore_htlc_expiry(
-    rpc_path: &PathBuf,
-    pay_hash: String,
-    string: String,
-) -> Result<DatastoreResponse, Error> {
-    datastore_raw(
-        rpc_path,
-        vec![
-            HOLD_INVOICE_PLUGIN_NAME.to_string(),
-            pay_hash,
-            HOLD_INVOICE_DATASTORE_HTLC_EXPIRY.to_string(),
-        ],
-        Some(string),
-        None,
-        Some(DatastoreMode::CREATE_OR_REPLACE),
-        None,
-    )
-    .await
-}
+    let fallbacks = if let Some(fbcks) = args.get("fallbacks") {
+        Some(if let Some(fbcks_arr) = fbcks.as_array() {
+            fbcks_arr
+                .iter()
+                .filter_map(|value| value.as_str().map(|s| s.to_string()))
+                .collect()
+        } else {
+            return Err(json!({
+                "code": -32602,
+                "message": format!("fallbacks: should be an array: \
+                invalid token '{}'", fbcks.to_string())
+            }));
+        })
+    } else {
+        None
+    };
 
-async fn listdatastore_raw(
-    rpc_path: &PathBuf,
-    key: Option<Vec<String>>,
-) -> Result<ListdatastoreResponse, Error> {
-    let mut rpc = ClnRpc::new(&rpc_path).await?;
-    let datastore_request = rpc
-        .call(Request::ListDatastore(ListdatastoreRequest { key }))
-        .await
-        .map_err(|e| anyhow!("Error calling listdatastore: {:?}", e))?;
-    match datastore_request {
-        Response::ListDatastore(info) => Ok(info),
-        e => Err(anyhow!("Unexpected result in listdatastore: {:?}", e)),
-    }
-}
+    let preimage = if let Some(preimg) = args.get("preimage") {
+        Some(if let Some(preimg_str) = preimg.as_str() {
+            if preimg_str.len() != 64 {
+                return Err(invalid_hash_error("preimage", &preimg.to_string()));
+            } else {
+                preimg_str.to_string()
+            }
+        } else {
+            return Err(invalid_hash_error("preimage", &preimg.to_string()));
+        })
+    } else {
+        None
+    };
 
-pub async fn listdatastore_all(rpc_path: &PathBuf) -> Result<ListdatastoreResponse, Error> {
-    listdatastore_raw(rpc_path, Some(vec![HOLD_INVOICE_PLUGIN_NAME.to_string()])).await
-}
+    let cltv = if let Some(c) = args.get("cltv") {
+        Some(if let Some(c_u64) = c.as_u64() {
+            if c_u64 as u32 <= CANCEL_HOLD_BEFORE_HTLC_EXPIRY_BLOCKS {
+                return Err(json!({
+                    "code": -32602,
+                    "message": format!("cltv: needs to be greater than '{}' requested: '{}'",
+                    CANCEL_HOLD_BEFORE_HTLC_EXPIRY_BLOCKS, c_u64)
+                }));
+            } else {
+                c_u64 as u32
+            }
+        } else {
+            return Err(json!({
+                "code": -32602,
+                "message": format!("cltv: should be an integer: \
+                invalid token '{}'", c.to_string())
+            }));
+        })
+    } else {
+        None
+    };
 
-pub async fn listdatastore_state(
-    rpc_path: &PathBuf,
-    pay_hash: String,
-) -> Result<ListdatastoreDatastore, Error> {
-    let response = listdatastore_raw(
-        rpc_path,
-        Some(vec![
-            HOLD_INVOICE_PLUGIN_NAME.to_string(),
-            pay_hash.clone(),
-            HOLD_INVOICE_DATASTORE_STATE.to_string(),
-        ]),
-    )
-    .await?;
-    let data = response.datastore.first().ok_or_else(|| {
-        anyhow!(
-            "empty result for listdatastore_state with pay_hash: {}",
-            pay_hash
-        )
-    })?;
-    Ok(data.clone())
-}
+    let deschashonly = if let Some(dhash) = args.get("deschashonly") {
+        Some(if let Some(dhash_bool) = dhash.as_bool() {
+            dhash_bool
+        } else {
+            return Err(json!({
+                "code": -32602,
+                "message": format!("deschashonly: should be 'true' or 'false': \
+                invalid token '{}'", dhash.to_string())
+            }));
+        })
+    } else {
+        None
+    };
 
-pub async fn listdatastore_htlc_expiry(rpc_path: &PathBuf, pay_hash: String) -> Result<u32, Error> {
-    let response = listdatastore_raw(
-        rpc_path,
-        Some(vec![
-            HOLD_INVOICE_PLUGIN_NAME.to_string(),
-            pay_hash.clone(),
-            HOLD_INVOICE_DATASTORE_HTLC_EXPIRY.to_string(),
-        ]),
-    )
-    .await?;
-    let data = response
-        .datastore
-        .first()
-        .ok_or_else(|| {
-            anyhow!(
-                "empty result for listdatastore_htlc_expiry with pay_hash: {}",
-                pay_hash
-            )
-        })?
-        .string
-        .as_ref()
-        .ok_or_else(|| {
-            anyhow!(
-                "None string for listdatastore_htlc_expiry with pay_hash: {}",
-                pay_hash
-            )
-        })?;
-    let cltv = data.parse::<u32>()?;
-    Ok(cltv)
-}
-
-async fn del_datastore_raw(
-    rpc_path: &PathBuf,
-    key: Vec<String>,
-) -> Result<DeldatastoreResponse, Error> {
-    let mut rpc = ClnRpc::new(&rpc_path).await?;
-    let del_datastore_request = rpc
-        .call(Request::DelDatastore(DeldatastoreRequest {
-            key,
-            generation: None,
-        }))
-        .await
-        .map_err(|e| anyhow!("Error calling DelDatastore: {:?}", e))?;
-    match del_datastore_request {
-        Response::DelDatastore(info) => Ok(info),
-        e => Err(anyhow!("Unexpected result in DelDatastore: {:?}", e)),
-    }
-}
-
-pub async fn del_datastore_state(
-    rpc_path: &PathBuf,
-    pay_hash: String,
-) -> Result<DeldatastoreResponse, Error> {
-    del_datastore_raw(
-        rpc_path,
-        vec![
-            HOLD_INVOICE_PLUGIN_NAME.to_string(),
-            pay_hash,
-            HOLD_INVOICE_DATASTORE_STATE.to_string(),
-        ],
-    )
-    .await
-}
-
-pub async fn del_datastore_htlc_expiry(
-    rpc_path: &PathBuf,
-    pay_hash: String,
-) -> Result<DeldatastoreResponse, Error> {
-    del_datastore_raw(
-        rpc_path,
-        vec![
-            HOLD_INVOICE_PLUGIN_NAME.to_string(),
-            pay_hash.clone(),
-            HOLD_INVOICE_DATASTORE_HTLC_EXPIRY.to_string(),
-        ],
-    )
-    .await
-}
-
-pub fn short_channel_id_to_string(scid: u64) -> String {
-    let block_height = scid >> 40;
-    let tx_index = (scid >> 16) & 0xFFFFFF;
-    let output_index = scid & 0xFFFF;
-    format!("{}x{}x{}", block_height, tx_index, output_index)
+    Ok(InvoiceRequest {
+        amount_msat,
+        label,
+        description,
+        expiry,
+        fallbacks,
+        preimage,
+        cltv,
+        deschashonly,
+    })
 }

@@ -1,7 +1,7 @@
 #![recursion_limit = "1024"]
+use crate::model::Holdstate;
 use crate::pb::hold_server::HoldServer;
 use crate::util::make_rpc_path;
-use crate::util::Holdstate;
 use anyhow::{anyhow, Context, Result};
 use cln_plugin::Plugin;
 use cln_plugin::{options, Builder};
@@ -15,9 +15,11 @@ use std::sync::Arc;
 
 use crate::hold::{hold_invoice, hold_invoice_cancel, hold_invoice_lookup, hold_invoice_settle};
 
+mod errors;
 mod hold;
 mod hooks;
 mod model;
+mod rpc;
 mod tasks;
 mod tls;
 mod util;
@@ -29,7 +31,6 @@ mod server;
 async fn main() -> Result<()> {
     debug!("Starting grpc plugin");
     std::env::set_var("CLN_PLUGIN_LOG", "cln_plugin=info,cln_rpc=info,debug");
-    // let path = Path::new("lightning-rpc");
 
     let directory = std::env::current_dir()?;
     let (identity, ca_cert) = tls::init(&directory)?;
@@ -73,7 +74,7 @@ async fn main() -> Result<()> {
         .await?
     {
         Some(p) => {
-            info!("read config");
+            // info!("read config");
             // match config::read_config(&p, state.clone()).await {
             //     Ok(()) => &(),
             //     Err(e) => return p.disable(format!("{}", e).as_str()).await,
@@ -125,7 +126,7 @@ async fn main() -> Result<()> {
             debug!("Plugin loop terminated")
         }
         e = run_interface(bind_addr,rpc_path, confplugin.clone()) => {
-            warn!("Error running grpc interface: {:?}", e)
+            warn!("Error running grpc-hold interface: {:?}", e)
         }
     }
     Ok(())
@@ -149,7 +150,7 @@ async fn run_interface(
         .add_service(HoldServer::new(
             server::Server::new(&rpc_path, plugin.clone())
                 .await
-                .context("creating NodeServer instance")?,
+                .context("creating HoldServer instance")?,
         ))
         .serve(bind_addr);
 
