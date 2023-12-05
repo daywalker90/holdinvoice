@@ -61,3 +61,7 @@ pub fn wrong_hold_state_error(holdstate: Holdstate) -> serde_json::Value {
         "message": format!("Holdinvoice is in wrong state: '{}'", holdstate)
     })
 }
+
+pub fn config_value_error(name: &str, value: u64) -> String {
+    format!("{} needs to be greater than {}", name, value)
+}

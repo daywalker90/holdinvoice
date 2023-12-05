@@ -3,9 +3,7 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use crate::errors::*;
-use crate::model::{
-    PluginState, CANCEL_HOLD_BEFORE_HTLC_EXPIRY_BLOCKS, CANCEL_HOLD_BEFORE_INVOICE_EXPIRY_SECONDS,
-};
+use crate::model::{Config, PluginState};
 
 use cln_plugin::{Error, Plugin};
 use cln_rpc::model::requests::InvoiceRequest;
@@ -83,6 +81,7 @@ pub fn parse_payment_hash(args: serde_json::Value) -> Result<String, serde_json:
 
 pub fn build_invoice_request(
     args: &serde_json::Value,
+    config: &Config,
 ) -> Result<InvoiceRequest, serde_json::Value> {
     let amount_msat = if let Some(amt) = args.get("amount_msat") {
         AmountOrAny::Amount(Amount::from_msat(if let Some(amt_u64) = amt.as_u64() {
@@ -119,11 +118,11 @@ pub fn build_invoice_request(
 
     let expiry = if let Some(exp) = args.get("expiry") {
         Some(if let Some(exp_u64) = exp.as_u64() {
-            if exp_u64 <= CANCEL_HOLD_BEFORE_INVOICE_EXPIRY_SECONDS {
+            if exp_u64 <= config.cancel_hold_before_invoice_expiry_seconds.1 {
                 return Err(json!({
                     "code": -32602,
                     "message": format!("expiry: needs to be greater than '{}' requested: '{}'",
-                    CANCEL_HOLD_BEFORE_INVOICE_EXPIRY_SECONDS, exp_u64)
+                    config.cancel_hold_before_invoice_expiry_seconds.1, exp_u64)
                 }));
             } else {
                 exp_u64
@@ -168,11 +167,11 @@ pub fn build_invoice_request(
 
     let cltv = if let Some(c) = args.get("cltv") {
         Some(if let Some(c_u64) = c.as_u64() {
-            if c_u64 as u32 <= CANCEL_HOLD_BEFORE_HTLC_EXPIRY_BLOCKS {
+            if c_u64 as u32 <= config.cancel_hold_before_htlc_expiry_blocks.1 {
                 return Err(json!({
                     "code": -32602,
                     "message": format!("cltv: needs to be greater than '{}' requested: '{}'",
-                    CANCEL_HOLD_BEFORE_HTLC_EXPIRY_BLOCKS, c_u64)
+                    config.cancel_hold_before_htlc_expiry_blocks.1, c_u64)
                 }));
             } else {
                 c_u64 as u32

@@ -59,7 +59,8 @@ pub async fn hold_invoice(
         _ => return Ok(invalid_input_error(&args.to_string())),
     };
 
-    let inv_req = match build_invoice_request(&new_args) {
+    let config = plugin.state().config.lock().clone();
+    let inv_req = match build_invoice_request(&new_args, &config) {
         Ok(i) => i,
         Err(e) => return Ok(e),
     };
