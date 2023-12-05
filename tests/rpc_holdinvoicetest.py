@@ -24,7 +24,8 @@ def test_inputs(node_factory):
     result = node.rpc.call("holdinvoice", {
         "amount_msat": 1000000,
         "description": "Valid invoice description",
-        "label": generate_random_label()}
+        "label": generate_random_label(),
+        "cltv": 144}
     )
     assert result is not None
     assert isinstance(result, dict) is True
@@ -33,7 +34,8 @@ def test_inputs(node_factory):
     result = node.rpc.call("holdinvoice", {
         "amount_msat": 1000000,
         "description": "",
-        "label": generate_random_label()}
+        "label": generate_random_label(),
+        "cltv": 144}
     )
     assert result is not None
     assert isinstance(result, dict) is True
@@ -42,7 +44,8 @@ def test_inputs(node_factory):
     result = node.rpc.call("holdinvoice", {
         "amount_msat": 1000000,
         "description": "Numbers only as label",
-        "label": generate_random_number()}
+        "label": generate_random_number(),
+        "cltv": 144}
     )
     assert result is not None
     assert isinstance(result, dict) is True
@@ -50,7 +53,8 @@ def test_inputs(node_factory):
 
     result = node.rpc.call("holdinvoice", {
         "description": "Missing amount",
-        "label": generate_random_label()}
+        "label": generate_random_label(),
+        "cltv": 144}
     )
     assert result is not None
     assert isinstance(result, dict) is True
@@ -59,7 +63,8 @@ def test_inputs(node_factory):
 
     result = node.rpc.call("holdinvoice", {
         "amount_msat": 1000000,
-        "description": "Missing label", }
+        "description": "Missing label",
+        "cltv": 144}
     )
     assert result is not None
     assert isinstance(result, dict) is True
@@ -67,7 +72,8 @@ def test_inputs(node_factory):
 
     result = node.rpc.call("holdinvoice", {
         "amount_msat": 1000000,
-        "label": generate_random_label()}
+        "label": generate_random_label(),
+        "cltv": 144}
     )
     assert result is not None
     assert isinstance(result, dict) is True
@@ -93,7 +99,8 @@ def test_inputs(node_factory):
     result = node.rpc.call("holdinvoice", {
         "amount_msat": -1000,
         "description": "Invalid amount negative",
-        "label": generate_random_label()}
+        "label": generate_random_label(),
+        "cltv": 144}
     )
     assert result is not None
     assert isinstance(result, dict) is True
@@ -105,7 +112,8 @@ def test_inputs(node_factory):
     result = node.rpc.call("holdinvoice", {
         "amount_msat": 0,
         "description": "Invalid amount 0",
-        "label": generate_random_label()}
+        "label": generate_random_label(),
+        "cltv": 144}
     )
     assert result is not None
     assert isinstance(result, dict) is True
@@ -118,7 +126,8 @@ def test_inputs(node_factory):
         "amount_msat": 500000,
         "description": "Invalid expiry",
         "label": generate_random_label(),
-        "expiry": -3600}
+        "expiry": -3600,
+        "cltv": 144}
     )
     assert result is not None
     assert isinstance(result, dict) is True
@@ -131,7 +140,8 @@ def test_inputs(node_factory):
         "amount_msat": 800000,
         "description": "Invalid fallbacks",
         "label": generate_random_label(),
-        "fallbacks": "invalid_fallback"}
+        "fallbacks": "invalid_fallback",
+        "cltv": 144}
     )
     assert result is not None
     assert isinstance(result, dict) is True
@@ -150,6 +160,17 @@ def test_inputs(node_factory):
     assert isinstance(result, dict) is True
     expected_message = ("cltv: should be an integer: "
                         "invalid token '-144'")
+    assert result["message"] == expected_message
+
+    # Missing cltv option
+    result = node.rpc.call("holdinvoice", {
+        "amount_msat": 1200000,
+        "description": "Missing cltv",
+        "label": generate_random_label()}
+    )
+    assert result is not None
+    assert isinstance(result, dict) is True
+    expected_message = ("missing required parameter: cltv")
     assert result["message"] == expected_message
 
 

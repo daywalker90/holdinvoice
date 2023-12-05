@@ -184,7 +184,7 @@ pub fn build_invoice_request(
             }));
         })
     } else {
-        None
+        return Err(missing_parameter_error("cltv"));
     };
 
     let deschashonly = if let Some(dhash) = args.get("deschashonly") {

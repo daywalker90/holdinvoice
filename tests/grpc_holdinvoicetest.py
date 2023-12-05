@@ -21,7 +21,7 @@ from util import generate_random_label, pay_with_thread
 from util import PLUGIN_PATH
 
 
-def test_valid_input(node_factory):
+def test_inputs(node_factory):
     LOGGER = logging.getLogger(__name__)
     l1, l2 = node_factory.get_nodes(2,
                                     opts=[{},
@@ -71,7 +71,8 @@ def test_valid_input(node_factory):
     request = holdrpc.HoldInvoiceRequest(
         description="Valid invoice description",
         amount_msat=primitives__pb2.Amount(msat=1000000),
-        label=generate_random_label()
+        label=generate_random_label(),
+        cltv=144
     )
     result = hold_stub.HoldInvoice(request)
     assert result is not None
@@ -81,7 +82,8 @@ def test_valid_input(node_factory):
     request = holdrpc.HoldInvoiceRequest(
         description="",
         amount_msat=primitives__pb2.Amount(msat=1000000),
-        label=generate_random_label()
+        label=generate_random_label(),
+        cltv=144
     )
     result = hold_stub.HoldInvoice(request)
     assert result is not None
@@ -109,7 +111,8 @@ def test_valid_input(node_factory):
     request = holdrpc.HoldInvoiceRequest(
         description="Invalid amount",
         amount_msat=primitives__pb2.Amount(msat=0),
-        label=generate_random_label()
+        label=generate_random_label(),
+        cltv=144
     )
     with pytest.raises(
             _InactiveRpcError,
@@ -121,9 +124,20 @@ def test_valid_input(node_factory):
         description="Invalid fallbacks",
         amount_msat=primitives__pb2.Amount(msat=800000),
         label=generate_random_label(),
-        fallbacks="invalid_fallback"
+        fallbacks="invalid_fallback",
+        cltv=144
     )
     with pytest.raises(_InactiveRpcError, match=r"Fallback address not valid"):
+        hold_stub.HoldInvoice(request)
+
+    # missing cltv
+    request = holdrpc.HoldInvoiceRequest(
+        description="Missing cltv",
+        amount_msat=primitives__pb2.Amount(msat=800000),
+        label=generate_random_label()
+    )
+    with pytest.raises(_InactiveRpcError,
+                       match=r"missing required parameter: cltv"):
         hold_stub.HoldInvoice(request)
 
 
