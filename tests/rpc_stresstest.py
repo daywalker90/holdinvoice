@@ -7,6 +7,7 @@ import threading
 import os
 import logging
 from util import generate_random_label, pay_with_thread
+from util import PLUGIN_PATH
 
 
 # number of invoices to create, pay, hold and then cancel
@@ -38,7 +39,7 @@ def test_stress(node_factory, bitcoind):
                                     opts={
                                         'important-plugin': os.path.join(
                                             os.getcwd(),
-                                            'target/release/holdinvoice'
+                                            PLUGIN_PATH
                                         )
                                     }
                                     )

@@ -10,8 +10,7 @@ import os
 from util import generate_random_label
 from util import generate_random_number
 from util import pay_with_thread
-
-PLUGIN_PATH = '../holdinvoice/target/release/holdinvoice'
+from util import PLUGIN_PATH
 
 
 def test_inputs(node_factory):

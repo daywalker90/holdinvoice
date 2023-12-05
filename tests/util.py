@@ -2,6 +2,8 @@ import string
 import random
 import logging
 
+PLUGIN_PATH = '../holdinvoice/target/release/holdinvoice'
+
 
 def generate_random_label():
     label_length = 8
