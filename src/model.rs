@@ -3,7 +3,6 @@ use std::{
     sync::Arc,
 };
 
-use crate::pb::Amount;
 use crate::{pb, tls::Identity};
 use anyhow::anyhow;
 use bitcoin::hashes::sha256::Hash as Sha256;
@@ -124,11 +123,7 @@ fn is_none_or_empty<T>(f: &Option<Vec<T>>) -> bool
 where
     T: Clone,
 {
-    if let Some(inner) = f {
-        inner.is_empty()
-    } else {
-        true
-    }
+    f.as_ref().map_or(true, |value| value.is_empty())
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -182,7 +177,7 @@ impl IntoRequest for HoldInvoiceRequest {
 impl From<HoldInvoiceRequest> for pb::HoldInvoiceRequest {
     fn from(c: HoldInvoiceRequest) -> Self {
         Self {
-            amount_msat: Some(Amount {
+            amount_msat: Some(pb::Amount {
                 msat: c.amount_msat,
             }), // Rule #2 for type msat_or_any
             description: c.description, // Rule #2 for type string
