@@ -9,342 +9,413 @@ import grpc
 from pyln.client import LightningRpc
 import unittest
 import secrets
-import threading
+import logging
+from pyln.testing.fixtures import *
+from pyln.testing.utils import wait_for, mine_funding_to_announce
 import time
+import threading
 import os
-from util import generate_random_label
-from util import generate_random_number
-from util import pay_with_thread
-
-# need 2 nodes with sufficient liquidity on rpc1 side
-# this is the node with holdinvoice
-rpc2 = LightningRpc("/tmp/l2-regtest/regtest/lightning-rpc")
-# this node pays the invoices
-rpc1 = LightningRpc("/tmp/l1-regtest/regtest/lightning-rpc")
+import pytest
+from grpc._channel import _InactiveRpcError
+from util import generate_random_label, pay_with_thread
+from util import PLUGIN_PATH
 
 
-#######
-# Works with CLN
-#######
+def test_valid_input(node_factory):
+    LOGGER = logging.getLogger(__name__)
+    l1, l2 = node_factory.get_nodes(2,
+                                    opts=[{},
+                                          {'important-plugin': os.path.join(
+                                              os.getcwd(),
+                                              PLUGIN_PATH
+                                          ),
+                                        'grpc-hold-port': 54345}]
+                                    )
+    l1.rpc.connect(l2.info['id'], 'localhost', l2.port)
+    cl1, _ = l1.fundchannel(l2, 1_000_000)
+    cl2, _ = l1.fundchannel(l2, 1_000_000)
 
-# Load the client's certificate and key
-CLN_DIR = "/tmp/l2-regtest/regtest"
-with open(os.path.join(CLN_DIR, "client.pem"), "rb") as f:
-    client_cert = f.read()
-with open(os.path.join(CLN_DIR, "client-key.pem"), "rb") as f:
-    client_key = f.read()
+    l1.wait_channel_active(cl1)
+    l1.wait_channel_active(cl2)
 
-# Load the server's certificate
-with open(os.path.join(CLN_DIR, "server.pem"), "rb") as f:
-    server_cert = f.read()
+    l2info = l2.rpc.getinfo()
+
+    CLN_DIR = l2info['lightning-dir']
+    LOGGER.info(l2info['lightning-dir'])
+
+    with open(os.path.join(CLN_DIR, "client.pem"), "rb") as f:
+        client_cert = f.read()
+    with open(os.path.join(CLN_DIR, "client-key.pem"), "rb") as f:
+        client_key = f.read()
+
+    # Load the server's certificate
+    with open(os.path.join(CLN_DIR, "server.pem"), "rb") as f:
+        server_cert = f.read()
+
+    CLN_GRPC_HOLD_HOST = "localhost:54345"
+
+    os.environ["GRPC_SSL_CIPHER_SUITES"] = "HIGH+ECDSA"
+
+    # Create the SSL credentials object
+    creds = grpc.ssl_channel_credentials(
+        root_certificates=server_cert,
+        private_key=client_key,
+        certificate_chain=client_cert,
+    )
+    # Create the gRPC channel using the SSL credentials
+    holdchannel = grpc.secure_channel(CLN_GRPC_HOLD_HOST, creds)
+
+    # Create the gRPC stub
+    hold_stub = holdstub.HoldStub(holdchannel)
+
+    request = holdrpc.HoldInvoiceRequest(
+        description="Valid invoice description",
+        amount_msat=primitives__pb2.Amount(msat=1000000),
+        label=generate_random_label()
+    )
+    result = hold_stub.HoldInvoice(request)
+    assert result is not None
+    assert isinstance(result, holdrpc.HoldInvoiceResponse) is True
+    assert result.payment_hash is not None
+
+    request = holdrpc.HoldInvoiceRequest(
+        description="",
+        amount_msat=primitives__pb2.Amount(msat=1000000),
+        label=generate_random_label()
+    )
+    result = hold_stub.HoldInvoice(request)
+    assert result is not None
+    assert isinstance(result, holdrpc.HoldInvoiceResponse) is True
+    assert result.payment_hash is not None
+
+    random_hex = secrets.token_hex(32)
+    request = holdrpc.HoldInvoiceRequest(
+        amount_msat=primitives__pb2.Amount(msat=2000000),
+        description="Invoice with optional fields",
+        label=generate_random_label(),
+        expiry=3600,
+        fallbacks=["bcrt1qcpw242j4xsjth7ueq9dgmrqtxjyutuvmraeryr",
+                    "bcrt1qdwydlys0f8khnp87mx688vq4kskjyr68nrx58j"],
+        preimage=bytes.fromhex(random_hex),
+        cltv=144,
+        deschashonly=True
+    )
+    result = hold_stub.HoldInvoice(request)
+    assert result is not None
+    assert isinstance(result, holdrpc.HoldInvoiceResponse) is True
+    assert result.payment_hash is not None
+
+    # 0 amount_msat
+    request = holdrpc.HoldInvoiceRequest(
+        description="Invalid amount",
+        amount_msat=primitives__pb2.Amount(msat=0),
+        label=generate_random_label()
+    )
+    with pytest.raises(
+            _InactiveRpcError,
+            match=r"amount_msat|msatoshi: should be positive msat or "):
+        hold_stub.HoldInvoice(request)
+
+    # Fallbacks not as a list of strings
+    request = holdrpc.HoldInvoiceRequest(
+        description="Invalid fallbacks",
+        amount_msat=primitives__pb2.Amount(msat=800000),
+        label=generate_random_label(),
+        fallbacks="invalid_fallback"
+    )
+    with pytest.raises(_InactiveRpcError, match=r"Fallback address not valid"):
+        hold_stub.HoldInvoice(request)
 
 
-CLN_GRPC_HOST = "localhost:54344"
-CLN_GRPC_HOLD_HOST = "localhost:54345"
+def test_valid_hold_then_settle(node_factory):
+    LOGGER = logging.getLogger(__name__)
+    l1, l2 = node_factory.get_nodes(2,
+                                    opts=[{},
+                                          {'important-plugin': os.path.join(
+                                              os.getcwd(),
+                                              PLUGIN_PATH
+                                          ),
+                                        'grpc-hold-port': 54345}]
+                                    )
+    l1.rpc.connect(l2.info['id'], 'localhost', l2.port)
+    cl1, _ = l1.fundchannel(l2, 1_000_000)
+    cl2, _ = l1.fundchannel(l2, 1_000_000)
 
-os.environ["GRPC_SSL_CIPHER_SUITES"] = "HIGH+ECDSA"
+    l1.wait_channel_active(cl1)
+    l1.wait_channel_active(cl2)
 
-# Create the SSL credentials object
-creds = grpc.ssl_channel_credentials(
-    root_certificates=server_cert,
-    private_key=client_key,
-    certificate_chain=client_cert,
-)
-# Create the gRPC channel using the SSL credentials
-holdchannel = grpc.secure_channel(CLN_GRPC_HOLD_HOST, creds)
+    l2info = l2.rpc.getinfo()
 
-# Create the gRPC stub
-holdstub = holdstub.HoldStub(holdchannel)
+    CLN_DIR = l2info['lightning-dir']
+    LOGGER.info(l2info['lightning-dir'])
 
-# Create the gRPC channel using the SSL credentials
-channel = grpc.secure_channel(CLN_GRPC_HOST, creds)
+    with open(os.path.join(CLN_DIR, "client.pem"), "rb") as f:
+        client_cert = f.read()
+    with open(os.path.join(CLN_DIR, "client-key.pem"), "rb") as f:
+        client_key = f.read()
 
-# Create the gRPC stub
-stub = nodestub.NodeStub(channel)
+    # Load the server's certificate
+    with open(os.path.join(CLN_DIR, "server.pem"), "rb") as f:
+        server_cert = f.read()
 
+    CLN_GRPC_HOLD_HOST = "localhost:54345"
 
-class TestStringMethods(unittest.TestCase):
+    os.environ["GRPC_SSL_CIPHER_SUITES"] = "HIGH+ECDSA"
 
-    def test_node_grpc(self):
-        request = noderpc.GetinfoRequest()
-        result = stub.Getinfo(request)
-        self.assertTrue(isinstance(result, noderpc.GetinfoResponse))
-        self.assertIsNotNone(result.id)
+    # Create the SSL credentials object
+    creds = grpc.ssl_channel_credentials(
+        root_certificates=server_cert,
+        private_key=client_key,
+        certificate_chain=client_cert,
+    )
+    # Create the gRPC channel using the SSL credentials
+    holdchannel = grpc.secure_channel(CLN_GRPC_HOLD_HOST, creds)
 
-    def test_valid_input(self):
-        request = holdrpc.HoldInvoiceRequest(
-            description="Valid invoice description",
-            amount_msat=primitives__pb2.Amount(msat=1000000),
-            label=generate_random_label()
-        )
-        result = holdstub.HoldInvoice(request)
-        self.assertIsNotNone(result)
-        self.assertTrue(isinstance(result, holdrpc.HoldInvoiceResponse))
-        self.assertIsNotNone(result.payment_hash)
+    # Create the gRPC stub
+    hold_stub = holdstub.HoldStub(holdchannel)
 
-        request = holdrpc.HoldInvoiceRequest(
-            description="",
-            amount_msat=primitives__pb2.Amount(msat=1000000),
-            label=generate_random_label()
-        )
-        result = holdstub.HoldInvoice(request)
-        self.assertIsNotNone(result)
-        self.assertTrue(isinstance(result, holdrpc.HoldInvoiceResponse))
-        self.assertIsNotNone(result.payment_hash)
+    request = holdrpc.HoldInvoiceRequest(
+        description="Valid invoice description",
+        amount_msat=primitives__pb2.Amount(msat=1_000_100_000),
+        label=generate_random_label(),
+        cltv=144
+    )
+    result = hold_stub.HoldInvoice(request)
+    assert result is not None
+    assert (isinstance(result, holdrpc.HoldInvoiceResponse)) is True
+    assert result.payment_hash is not None
 
-    def test_optional_fields(self):
-        random_hex = secrets.token_hex(32)
-        request = holdrpc.HoldInvoiceRequest(
-            amount_msat=primitives__pb2.Amount(msat=2000000),
-            description="Invoice with optional fields",
-            label=generate_random_label(),
-            expiry=3600,
-            fallbacks=["bcrt1qcpw242j4xsjth7ueq9dgmrqtxjyutuvmraeryr",
-                       "bcrt1qdwydlys0f8khnp87mx688vq4kskjyr68nrx58j"],
-            preimage=bytes.fromhex(random_hex),
-            cltv=144,
-            deschashonly=True
-        )
-        result = holdstub.HoldInvoice(request)
-        self.assertIsNotNone(result)
-        self.assertTrue(isinstance(result, holdrpc.HoldInvoiceResponse))
-        self.assertIsNotNone(result.payment_hash)
+    request_lookup = holdrpc.HoldInvoiceLookupRequest(
+        payment_hash=result.payment_hash
+    )
+    result_lookup = hold_stub.HoldInvoiceLookup(request_lookup)
+    assert result_lookup is not None
+    assert isinstance(
+        result_lookup, holdrpc.HoldInvoiceLookupResponse) is True
+    assert result_lookup.state is not None
+    LOGGER.info(f"{result_lookup}")
+    assert (result_lookup.state ==
+            holdrpc.HoldInvoiceLookupResponse.Holdstate.OPEN)
+    assert result_lookup.htlc_expiry == 0
 
-    def test_invalid_amount_msat(self):
-        # 0 amount_msat
-        request = holdrpc.HoldInvoiceRequest(
-            description="Invalid amount",
-            amount_msat=primitives__pb2.Amount(msat=0),
-            label=generate_random_label()
-        )
-        with self.assertRaises(Exception) as result:
-            holdstub.HoldInvoice(request)
-        self.assertIsNotNone(result.exception)
-        self.assertIn(
-            "amount_msat|msatoshi: should be positive msat or ",
-            result.exception.debug_error_string())
+    # test that it won't settle if it's still open
+    request_settle = holdrpc.HoldInvoiceSettleRequest(
+        payment_hash=result.payment_hash
+    )
+    with pytest.raises(_InactiveRpcError,
+                       match=r"Holdinvoice is in wrong state: \\\'open\\\'\\"):
+        hold_stub.HoldInvoiceSettle(request_settle)
 
-    def test_invalid_fallbacks(self):
-        # Fallbacks not as a list of strings
-        request = holdrpc.HoldInvoiceRequest(
-            description="Invalid fallbacks",
-            amount_msat=primitives__pb2.Amount(msat=800000),
-            label=generate_random_label(),
-            fallbacks="invalid_fallback"
-        )
-        with self.assertRaises(Exception) as result:
-            holdstub.HoldInvoice(request)
-        self.assertIsNotNone(result.exception)
-        self.assertIn(
-            "Fallback address not valid",
-            result.exception.debug_error_string())
+    threading.Thread(target=pay_with_thread, args=(
+        l1, result.bolt11)).start()
 
-    def test_valid_hold_then_settle(self):
-        request = holdrpc.HoldInvoiceRequest(
-            description="Valid invoice description",
-            amount_msat=primitives__pb2.Amount(msat=1_000_100_000),
-            label=generate_random_label()
-        )
-        result = holdstub.HoldInvoice(request)
-        self.assertIsNotNone(result)
-        self.assertTrue(isinstance(result, holdrpc.HoldInvoiceResponse))
-        self.assertIsNotNone(result.payment_hash)
+    timeout = 10
+    start_time = time.time()
 
+    while time.time() - start_time < timeout:
         request_lookup = holdrpc.HoldInvoiceLookupRequest(
             payment_hash=result.payment_hash
         )
-        result_lookup = holdstub.HoldInvoiceLookup(request_lookup)
-        self.assertIsNotNone(result_lookup)
-        self.assertTrue(isinstance(
-            result_lookup, holdrpc.HoldInvoiceLookupResponse))
-        self.assertIsNotNone(result_lookup.state)
-        print(result_lookup)
-        self.assertEqual(result_lookup.state,
-                         holdrpc.HoldInvoiceLookupResponse.Holdstate.OPEN)
-        self.assertIs(result_lookup.htlc_expiry, 0)
+        result_lookup = hold_stub.HoldInvoiceLookup(request_lookup)
+        assert result_lookup is not None
+        assert isinstance(
+            result_lookup, holdrpc.HoldInvoiceLookupResponse) is True
 
-        # test that it won't settle if it's still open
-        request_settle = holdrpc.HoldInvoiceSettleRequest(
-            payment_hash=result.payment_hash
-        )
-        with self.assertRaises(Exception) as result_settle:
-            holdstub.HoldInvoiceSettle(request_settle)
-        self.assertIsNotNone(result_settle.exception)
-        self.assertIn(
-            "Holdinvoice is in wrong state: \\\'open\\\'\\",
-            result_settle.exception.debug_error_string())
+        if (result_lookup.state ==
+                holdrpc.HoldInvoiceLookupResponse.Holdstate.ACCEPTED):
+            break
+        else:
+            time.sleep(1)
 
-        threading.Thread(target=pay_with_thread, args=(
-            rpc1, result.bolt11)).start()
+    assert (result_lookup.state ==
+            holdrpc.HoldInvoiceLookupResponse.Holdstate.ACCEPTED)
+    assert result_lookup.htlc_expiry > 0
 
-        timeout = 10
-        start_time = time.time()
+    # test that it's actually holding the htlcs
+    # and not letting them through
+    doublecheck = l2.rpc.listinvoices(
+        payment_hash=result.payment_hash.hex())["invoices"]
+    assert doublecheck[0]["status"] == "unpaid"
 
-        while time.time() - start_time < timeout:
-            request_lookup = holdrpc.HoldInvoiceLookupRequest(
-                payment_hash=result.payment_hash
-            )
-            result_lookup = holdstub.HoldInvoiceLookup(request_lookup)
-            self.assertIsNotNone(result_lookup)
-            self.assertTrue(isinstance(
-                result_lookup, holdrpc.HoldInvoiceLookupResponse))
+    request_settle = holdrpc.HoldInvoiceSettleRequest(
+        payment_hash=result.payment_hash
+    )
+    result_settle = hold_stub.HoldInvoiceSettle(request_settle)
+    assert result_settle is not None
+    assert isinstance(
+        result_settle, holdrpc.HoldInvoiceSettleResponse) is True
+    assert (result_settle.state ==
+            holdrpc.HoldInvoiceSettleResponse.Holdstate.SETTLED)
 
-            if result_lookup.state == holdrpc.HoldInvoiceLookupResponse.Holdstate.ACCEPTED:
-                break
-            else:
-                time.sleep(1)
+    request_lookup = holdrpc.HoldInvoiceLookupRequest(
+        payment_hash=result.payment_hash
+    )
+    result_lookup = hold_stub.HoldInvoiceLookup(request_lookup)
+    assert result_lookup is not None
+    assert isinstance(
+        result_lookup, holdrpc.HoldInvoiceLookupResponse) is True
+    assert (result_lookup.state ==
+            holdrpc.HoldInvoiceLookupResponse.Holdstate.SETTLED)
+    assert result_lookup.htlc_expiry == 0
 
-        self.assertEqual(result_lookup.state,
-                         holdrpc.HoldInvoiceLookupResponse.Holdstate.ACCEPTED)
-        self.assertIsNot(result_lookup.htlc_expiry, 0)
+    # ask cln if the invoice is actually paid
+    # should not be necessary because lookup does this aswell
+    doublecheck = l2.rpc.listinvoices(
+        payment_hash=result.payment_hash.hex())["invoices"]
+    assert doublecheck[0]["status"] == "paid"
 
-        # test that it's actually holding the htlcs
-        # and not letting them through
-        doublecheck = rpc2.listinvoices(
-            payment_hash=result.payment_hash.hex())["invoices"]
-        self.assertEqual(doublecheck[0]["status"], "unpaid")
+    request_cancel_settled = holdrpc.HoldInvoiceCancelRequest(
+        payment_hash=result.payment_hash
+    )
 
-        request_settle = holdrpc.HoldInvoiceSettleRequest(
-            payment_hash=result.payment_hash
-        )
-        result_settle = holdstub.HoldInvoiceSettle(request_settle)
-        self.assertIsNotNone(result_settle)
-        self.assertTrue(isinstance(
-            result_settle, holdrpc.HoldInvoiceSettleResponse))
-        self.assertEqual(result_settle.state,
-                         holdrpc.HoldInvoiceSettleResponse.Holdstate.SETTLED)
+    with pytest.raises(
+            _InactiveRpcError,
+            match=r"Holdinvoice is in wrong state: \\\'settled\\\'\\"):
+        hold_stub.HoldInvoiceCancel(request_cancel_settled)
 
+
+def test_valid_hold_then_cancel(node_factory):
+    LOGGER = logging.getLogger(__name__)
+    l1, l2 = node_factory.get_nodes(2,
+                                    opts=[{},
+                                          {'important-plugin': os.path.join(
+                                              os.getcwd(),
+                                              PLUGIN_PATH
+                                          ),
+                                        'grpc-hold-port': 54345}]
+                                    )
+    l1.rpc.connect(l2.info['id'], 'localhost', l2.port)
+    cl1, _ = l1.fundchannel(l2, 1_000_000)
+    cl2, _ = l1.fundchannel(l2, 1_000_000)
+
+    l1.wait_channel_active(cl1)
+    l1.wait_channel_active(cl2)
+
+    l2info = l2.rpc.getinfo()
+
+    CLN_DIR = l2info['lightning-dir']
+    LOGGER.info(l2info['lightning-dir'])
+
+    with open(os.path.join(CLN_DIR, "client.pem"), "rb") as f:
+        client_cert = f.read()
+    with open(os.path.join(CLN_DIR, "client-key.pem"), "rb") as f:
+        client_key = f.read()
+
+    # Load the server's certificate
+    with open(os.path.join(CLN_DIR, "server.pem"), "rb") as f:
+        server_cert = f.read()
+
+    CLN_GRPC_HOLD_HOST = "localhost:54345"
+
+    os.environ["GRPC_SSL_CIPHER_SUITES"] = "HIGH+ECDSA"
+
+    # Create the SSL credentials object
+    creds = grpc.ssl_channel_credentials(
+        root_certificates=server_cert,
+        private_key=client_key,
+        certificate_chain=client_cert,
+    )
+    # Create the gRPC channel using the SSL credentials
+    holdchannel = grpc.secure_channel(CLN_GRPC_HOLD_HOST, creds)
+
+    # Create the gRPC stub
+    hold_stub = holdstub.HoldStub(holdchannel)
+
+    request = holdrpc.HoldInvoiceRequest(
+        description="Valid invoice description",
+        amount_msat=primitives__pb2.Amount(msat=1_000_100_000),
+        label=generate_random_label(),
+        cltv=144
+    )
+    result = hold_stub.HoldInvoice(request)
+    assert result is not None
+    assert (isinstance(result, holdrpc.HoldInvoiceResponse)) is True
+    assert result.payment_hash is not None
+
+    request_lookup = holdrpc.HoldInvoiceLookupRequest(
+        payment_hash=result.payment_hash
+    )
+    result_lookup = hold_stub.HoldInvoiceLookup(request_lookup)
+    assert result_lookup is not None
+    assert isinstance(
+        result_lookup, holdrpc.HoldInvoiceLookupResponse) is True
+    assert result_lookup.state is not None
+    LOGGER.info(f"{result_lookup}")
+    assert (result_lookup.state ==
+            holdrpc.HoldInvoiceLookupResponse.Holdstate.OPEN)
+    assert result_lookup.htlc_expiry == 0
+
+    # test that it won't settle if it's still open
+    request_settle = holdrpc.HoldInvoiceSettleRequest(
+        payment_hash=result.payment_hash
+    )
+    with pytest.raises(_InactiveRpcError,
+                       match=r"Holdinvoice is in wrong state: \\\'open\\\'\\"):
+        hold_stub.HoldInvoiceSettle(request_settle)
+
+    threading.Thread(target=pay_with_thread, args=(
+        l1, result.bolt11)).start()
+
+    timeout = 10
+    start_time = time.time()
+
+    while time.time() - start_time < timeout:
         request_lookup = holdrpc.HoldInvoiceLookupRequest(
             payment_hash=result.payment_hash
         )
-        result_lookup = holdstub.HoldInvoiceLookup(request_lookup)
-        self.assertIsNotNone(result_lookup)
-        self.assertTrue(isinstance(
-            result_lookup, holdrpc.HoldInvoiceLookupResponse))
-        self.assertEqual(result_lookup.state,
-                         holdrpc.HoldInvoiceLookupResponse.Holdstate.SETTLED)
-        self.assertIs(result_lookup.htlc_expiry, 0)
+        result_lookup = hold_stub.HoldInvoiceLookup(request_lookup)
+        assert result_lookup is not None
+        assert isinstance(
+            result_lookup, holdrpc.HoldInvoiceLookupResponse) is True
 
-        # ask cln if the invoice is actually paid
-        # should not be necessary because lookup does this aswell
-        doublecheck = rpc2.listinvoices(
-            payment_hash=result.payment_hash.hex())["invoices"]
-        self.assertEqual(doublecheck[0]["status"], "paid")
+        if (result_lookup.state ==
+                holdrpc.HoldInvoiceLookupResponse.Holdstate.ACCEPTED):
+            break
+        else:
+            time.sleep(1)
 
-        request_cancel_settled = holdrpc.HoldInvoiceCancelRequest(
-            payment_hash=result.payment_hash
-        )
-        with self.assertRaises(Exception) as result_cancel_settled:
-            holdstub.HoldInvoiceCancel(request_cancel_settled)
-        self.assertIsNotNone(result_cancel_settled.exception)
-        self.assertIn(
-            "Holdinvoice is in wrong "
-            "state: \\\'settled\\\'\\",
-            result_cancel_settled.exception.debug_error_string())
+    assert (result_lookup.state ==
+            holdrpc.HoldInvoiceLookupResponse.Holdstate.ACCEPTED)
+    assert result_lookup.htlc_expiry > 0
 
-    def test_valid_hold_then_cancel(self):
-        request = holdrpc.HoldInvoiceRequest(
-            description="Valid invoice description",
-            amount_msat=primitives__pb2.Amount(msat=1_000_100_000),
-            label=generate_random_label()
-        )
-        result = holdstub.HoldInvoice(request)
-        self.assertIsNotNone(result)
-        self.assertTrue(isinstance(result, holdrpc.HoldInvoiceResponse))
-        self.assertIsNotNone(result.payment_hash)
+    # test that it's actually holding the htlcs
+    # and not letting them through
+    doublecheck = l2.rpc.listinvoices(
+        payment_hash=result.payment_hash.hex())["invoices"]
+    assert doublecheck[0]["status"] == "unpaid"
 
-        request_lookup = holdrpc.HoldInvoiceLookupRequest(
-            payment_hash=result.payment_hash
-        )
-        result_lookup = holdstub.HoldInvoiceLookup(request_lookup)
-        self.assertIsNotNone(result_lookup)
-        self.assertTrue(isinstance(
-            result_lookup, holdrpc.HoldInvoiceLookupResponse))
-        self.assertIsNotNone(result_lookup.state)
-        print(result_lookup)
-        self.assertEqual(result_lookup.state,
-                         holdrpc.HoldInvoiceLookupResponse.Holdstate.OPEN)
-        self.assertIs(result_lookup.htlc_expiry, 0)
+    request_cancel = holdrpc.HoldInvoiceCancelRequest(
+        payment_hash=result.payment_hash
+    )
+    result_cancel = hold_stub.HoldInvoiceCancel(request_cancel)
+    assert result_cancel is not None
+    assert isinstance(
+        result_cancel, holdrpc.HoldInvoiceCancelResponse) is True
+    assert (result_cancel.state ==
+            holdrpc.HoldInvoiceCancelResponse.Holdstate.CANCELED)
 
-        # test that it won't settle if it's still open
-        request_settle = holdrpc.HoldInvoiceSettleRequest(
-            payment_hash=result.payment_hash
-        )
-        with self.assertRaises(Exception) as result_settle:
-            holdstub.HoldInvoiceSettle(request_settle)
-        self.assertIsNotNone(result_settle.exception)
-        self.assertIn(
-            "Holdinvoice is in wrong state: \\\'open\\\'\\",
-            result_settle.exception.debug_error_string())
+    request_lookup = holdrpc.HoldInvoiceLookupRequest(
+        payment_hash=result.payment_hash
+    )
+    result_lookup = hold_stub.HoldInvoiceLookup(request_lookup)
+    assert result_lookup is not None
+    assert isinstance(
+        result_lookup, holdrpc.HoldInvoiceLookupResponse) is True
+    assert (result_lookup.state ==
+            holdrpc.HoldInvoiceLookupResponse.Holdstate.CANCELED)
+    assert result_lookup.htlc_expiry == 0
 
-        threading.Thread(target=pay_with_thread, args=(
-            rpc1, result.bolt11)).start()
+    # ask cln if the invoice is actually unpaid
+    # should not be necessary because lookup does this aswell
+    doublecheck = l2.rpc.listinvoices(
+        payment_hash=result.payment_hash.hex())["invoices"]
+    assert doublecheck[0]["status"] == "unpaid"
 
-        timeout = 10
-        start_time = time.time()
+    request_settle_canceled = holdrpc.HoldInvoiceSettleRequest(
+        payment_hash=result.payment_hash
+    )
 
-        while time.time() - start_time < timeout:
-            request_lookup = holdrpc.HoldInvoiceLookupRequest(
-                payment_hash=result.payment_hash
-            )
-            result_lookup = holdstub.HoldInvoiceLookup(request_lookup)
-            self.assertIsNotNone(result_lookup)
-            self.assertTrue(isinstance(
-                result_lookup, holdrpc.HoldInvoiceLookupResponse))
-
-            if result_lookup.state == holdrpc.HoldInvoiceLookupResponse.Holdstate.ACCEPTED:
-                break
-            else:
-                time.sleep(1)
-
-        self.assertEqual(result_lookup.state,
-                         holdrpc.HoldInvoiceLookupResponse.Holdstate.ACCEPTED)
-        self.assertIsNot(result_lookup.htlc_expiry, 0)
-
-        # test that it's actually holding the htlcs
-        # and not letting them through
-        doublecheck = rpc2.listinvoices(
-            payment_hash=result.payment_hash.hex())["invoices"]
-        self.assertEqual(doublecheck[0]["status"], "unpaid")
-
-        request_settle = holdrpc.HoldInvoiceCancelRequest(
-            payment_hash=result.payment_hash
-        )
-        result_settle = holdstub.HoldInvoiceCancel(request_settle)
-        self.assertIsNotNone(result_settle)
-        self.assertTrue(isinstance(
-            result_settle, holdrpc.HoldInvoiceCancelResponse))
-        self.assertEqual(result_settle.state,
-                         holdrpc.HoldInvoiceCancelResponse.Holdstate.CANCELED)
-
-        request_lookup = holdrpc.HoldInvoiceLookupRequest(
-            payment_hash=result.payment_hash
-        )
-        result_lookup = holdstub.HoldInvoiceLookup(request_lookup)
-        self.assertIsNotNone(result_lookup)
-        self.assertTrue(isinstance(
-            result_lookup, holdrpc.HoldInvoiceLookupResponse))
-        self.assertEqual(result_lookup.state,
-                         holdrpc.HoldInvoiceLookupResponse.Holdstate.CANCELED)
-        self.assertIs(result_lookup.htlc_expiry, 0)
-
-        # ask cln if the invoice is actually unpaid
-        # should not be necessary because lookup does this aswell
-        doublecheck = rpc2.listinvoices(
-            payment_hash=result.payment_hash.hex())["invoices"]
-        self.assertEqual(doublecheck[0]["status"], "unpaid")
-
-        request_cancel_settled = holdrpc.HoldInvoiceSettleRequest(
-            payment_hash=result.payment_hash
-        )
-        with self.assertRaises(Exception) as result_cancel_settled:
-            holdstub.HoldInvoiceSettle(request_cancel_settled)
-        self.assertIsNotNone(result_cancel_settled.exception)
-        self.assertIn(
-            "Holdinvoice is in wrong "
-            "state: \\\'canceled\\\'\\",
-            result_cancel_settled.exception.debug_error_string())
-
-
-if __name__ == '__main__':
-    unittest.main()
+    with pytest.raises(
+            _InactiveRpcError,
+            match=r"Holdinvoice is in wrong state: \\\'canceled\\\'\\"):
+        hold_stub.HoldInvoiceSettle(request_settle_canceled)
