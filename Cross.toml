@@ -1,0 +1,6 @@
+[build]
+pre-build = [
+    "apt update && apt install -y unzip",
+    "curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v21.12/protoc-21.12-linux-x86_64.zip && unzip protoc-21.12-linux-x86_64.zip -d /usr/",
+    "chmod 755 /usr/bin/protoc"
+]
