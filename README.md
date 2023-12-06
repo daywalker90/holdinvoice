@@ -38,6 +38,8 @@ Install a recent rust version ([rustup](https://rustup.rs/) is recommended) and 
 
 After that the binary will be here: ``target/release/holdinvoice``
 
+Note: Release binaries are built using ``cross`` and the ``optimized`` profile.
+
 ### Documentation
 There are five methods provided by this plugin:
 * (GRPC ONLY) ``DecodeBolt11``:  bolt11
@@ -51,7 +53,7 @@ There are five methods provided by this plugin:
     * order plugin to cancel a holdinvoice and return any pending htlcs back, does not wait for actual return of htlcs
 * ``holdinvoicelookup``: payment_hash
     * look up the holdstate of a holdinvoice and if it's in the ACCEPTED holdstate return the ``htlc_expiry``
-    * waits for actual settlement or return of htlcs and doublechecks holdstate with invoice state
+    * waits for actual settlement or return of htlcs (with a timeout) and doublechecks holdstate with invoice state
     * valid holdstates are:
         * OPEN (no or not enough htlcs pending)
         * ACCEPTED (enough htlcs to fulfill the invoice pending)
