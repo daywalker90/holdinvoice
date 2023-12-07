@@ -81,5 +81,5 @@ The plugin will automatically cancel any invoice if *it* is either close to expi
 # Options
 You can set the following options in your cln config file:
 
-* ``holdinvoice-cancel-before-htlc-expiry``: number of blocks before htlcs expiry where the plugin auto-cancels invoice and htlcs, Default: 6
-* ``holdinvoice-cancel-before-invoice-expiry``: number of seconds before invoice expiry where the plugin auto cancels any pending htlcs and no longer accepts new htlcs, Default: 1800
+* ``holdinvoice-cancel-before-htlc-expiry``: number of blocks before htlcs expiry where the plugin auto-cancels invoice and htlcs, Default: ``6``
+* ``holdinvoice-cancel-before-invoice-expiry``: number of seconds before invoice expiry where the plugin auto cancels any pending htlcs and no longer accepts new htlcs, Default: ``1800``
