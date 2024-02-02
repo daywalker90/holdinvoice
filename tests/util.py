@@ -15,7 +15,7 @@ COMPILED_PATH = Path.cwd() / "target" / RUST_PROFILE / \
     "holdinvoice"
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def get_plugin(directory):
     downloaded_plugin_path = Path(
         os.path.join(directory, "holdinvoice.tar.gz"))
