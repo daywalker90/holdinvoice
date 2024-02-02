@@ -6,19 +6,16 @@ from pyln.client import Millisatoshi
 import secrets
 import threading
 import time
-import os
 from util import generate_random_label
 from util import generate_random_number
 from util import pay_with_thread
-from util import PLUGIN_PATH
+from util import get_plugin
 
 
 def test_inputs(node_factory):
     node = node_factory.get_node(
         options={
-            'important-plugin': os.path.join(
-                os.getcwd(), PLUGIN_PATH
-            )
+            'important-plugin': get_plugin()
         }
     )
     result = node.rpc.call("holdinvoice", {
@@ -177,10 +174,7 @@ def test_inputs(node_factory):
 def test_valid_hold_then_settle(node_factory, bitcoind):
     l1, l2 = node_factory.get_nodes(2,
                                     opts={
-                                        'important-plugin': os.path.join(
-                                            os.getcwd(),
-                                            PLUGIN_PATH
-                                        )
+                                        'important-plugin': get_plugin()
                                     }
                                     )
     l1.rpc.connect(l2.info['id'], 'localhost', l2.port)
@@ -273,10 +267,7 @@ def test_valid_hold_then_settle(node_factory, bitcoind):
 def test_fc_hold_then_settle(node_factory, bitcoind):
     l1, l2 = node_factory.get_nodes(2,
                                     opts={
-                                        'important-plugin': os.path.join(
-                                            os.getcwd(),
-                                            PLUGIN_PATH
-                                        )
+                                        'important-plugin': get_plugin()
                                     }
                                     )
     l1.rpc.connect(l2.info['id'], 'localhost', l2.port)
@@ -390,10 +381,7 @@ def test_fc_hold_then_settle(node_factory, bitcoind):
 def test_valid_hold_then_cancel(node_factory):
     l1, l2 = node_factory.get_nodes(2,
                                     opts={
-                                        'important-plugin': os.path.join(
-                                            os.getcwd(),
-                                            PLUGIN_PATH
-                                        )
+                                        'important-plugin': get_plugin()
                                     }
                                     )
     l1.rpc.connect(l2.info['id'], 'localhost', l2.port)
@@ -472,10 +460,7 @@ def test_hold_then_block_timeout(node_factory, bitcoind):
     l1, l2 = node_factory.get_nodes(
         2,
         opts={
-            'important-plugin': os.path.join(
-                os.getcwd(),
-                PLUGIN_PATH
-            ),
+            'important-plugin': get_plugin(),
             'holdinvoice-cancel-before-invoice-expiry': 20
         }
     )
@@ -555,10 +540,7 @@ def test_hold_then_invoice_timeout(node_factory, bitcoind):
     l1, l2 = node_factory.get_nodes(
         2,
         opts={
-            'important-plugin': os.path.join(
-                os.getcwd(),
-                PLUGIN_PATH
-            ),
+            'important-plugin': get_plugin(),
             'holdinvoice-cancel-before-invoice-expiry': 20
         }
     )
