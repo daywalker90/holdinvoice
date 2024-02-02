@@ -1,4 +1,5 @@
 from pathlib import Path
+from pyln.testing.fixtures import directory
 import string
 import random
 import logging
@@ -12,28 +13,30 @@ VERSION = "v1.0.0"
 RUST_PROFILE = os.environ.get("RUST_PROFILE", "debug")
 COMPILED_PATH = Path.cwd() / "target" / RUST_PROFILE / \
     "holdinvoice"
-DOWNLOAD_PATH = Path.cwd() / "holdinvoice"
 
 
 @pytest.fixture(scope="session")
-def get_plugin():
+def get_plugin(directory):
+    downloaded_plugin_path = Path(
+        os.path.join(directory, "holdinvoice.tar.gz"))
+    extracted_plugin_path = Path(os.path.join(directory, "holdinvoice"))
     if COMPILED_PATH.is_file():
         return COMPILED_PATH
-    elif DOWNLOAD_PATH.is_file():
-        return DOWNLOAD_PATH
+    elif extracted_plugin_path.is_file():
+        return extracted_plugin_path
     else:
         architecture = get_architecture()
 
         url = (f"https://github.com/daywalker90/holdinvoice/releases/download/"
                f"{VERSION}/holdinvoice-{VERSION}-{architecture}.tar.gz")
         response = requests.get(url)
-        with open("holdinvoice.tar.gz", "wb") as file:
+        with open(downloaded_plugin_path, "wb") as file:
             file.write(response.content)
 
-        with tarfile.open("holdinvoice.tar.gz", "r:gz") as tar:
-            tar.extractall(Path.cwd())
+        with tarfile.open(downloaded_plugin_path, "r:gz") as tar:
+            tar.extractall(directory)
 
-        return DOWNLOAD_PATH
+        return extracted_plugin_path
 
 
 def get_architecture():
