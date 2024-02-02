@@ -12,10 +12,10 @@ from util import pay_with_thread
 from util import get_plugin
 
 
-def test_inputs(node_factory):
+def test_inputs(node_factory, get_plugin):
     node = node_factory.get_node(
         options={
-            'important-plugin': get_plugin()
+            'important-plugin': get_plugin
         }
     )
     result = node.rpc.call("holdinvoice", {
@@ -171,10 +171,10 @@ def test_inputs(node_factory):
     assert result["message"] == expected_message
 
 
-def test_valid_hold_then_settle(node_factory, bitcoind):
+def test_valid_hold_then_settle(node_factory, bitcoind, get_plugin):
     l1, l2 = node_factory.get_nodes(2,
                                     opts={
-                                        'important-plugin': get_plugin()
+                                        'important-plugin': get_plugin
                                     }
                                     )
     l1.rpc.connect(l2.info['id'], 'localhost', l2.port)
@@ -264,10 +264,10 @@ def test_valid_hold_then_settle(node_factory, bitcoind):
     assert result_cancel_settled["message"] == expected_message
 
 
-def test_fc_hold_then_settle(node_factory, bitcoind):
+def test_fc_hold_then_settle(node_factory, bitcoind, get_plugin):
     l1, l2 = node_factory.get_nodes(2,
                                     opts={
-                                        'important-plugin': get_plugin()
+                                        'important-plugin': get_plugin
                                     }
                                     )
     l1.rpc.connect(l2.info['id'], 'localhost', l2.port)
@@ -378,10 +378,10 @@ def test_fc_hold_then_settle(node_factory, bitcoind):
     assert total_funds > Millisatoshi(0)
 
 
-def test_valid_hold_then_cancel(node_factory):
+def test_valid_hold_then_cancel(node_factory, get_plugin):
     l1, l2 = node_factory.get_nodes(2,
                                     opts={
-                                        'important-plugin': get_plugin()
+                                        'important-plugin': get_plugin
                                     }
                                     )
     l1.rpc.connect(l2.info['id'], 'localhost', l2.port)
@@ -456,11 +456,11 @@ def test_valid_hold_then_cancel(node_factory):
     result_settle_canceled["message"] == expected_message
 
 
-def test_hold_then_block_timeout(node_factory, bitcoind):
+def test_hold_then_block_timeout(node_factory, bitcoind, get_plugin):
     l1, l2 = node_factory.get_nodes(
         2,
         opts={
-            'important-plugin': get_plugin(),
+            'important-plugin': get_plugin,
             'holdinvoice-cancel-before-invoice-expiry': 20
         }
     )
@@ -536,11 +536,11 @@ def test_hold_then_block_timeout(node_factory, bitcoind):
     assert l1.is_local_channel_active(cl2) is True
 
 
-def test_hold_then_invoice_timeout(node_factory, bitcoind):
+def test_hold_then_invoice_timeout(node_factory, bitcoind, get_plugin):
     l1, l2 = node_factory.get_nodes(
         2,
         opts={
-            'important-plugin': get_plugin(),
+            'important-plugin': get_plugin,
             'holdinvoice-cancel-before-invoice-expiry': 20
         }
     )

@@ -6,6 +6,7 @@ import os
 import requests
 import tarfile
 import platform
+import pytest
 
 VERSION = "v1.0.0"
 RUST_PROFILE = os.environ.get("RUST_PROFILE", "debug")
@@ -14,6 +15,7 @@ COMPILED_PATH = Path.cwd() / "target" / RUST_PROFILE / \
 DOWNLOAD_PATH = Path.cwd() / "holdinvoice"
 
 
+@pytest.fixture(scope="session")
 def get_plugin():
     if COMPILED_PATH.is_file():
         return COMPILED_PATH
