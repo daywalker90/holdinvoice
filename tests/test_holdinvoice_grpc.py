@@ -1,17 +1,12 @@
 #!/usr/bin/python
 
 import primitives_pb2 as primitives__pb2
-import node_pb2_grpc as nodestub
-import node_pb2 as noderpc
 import hold_pb2_grpc as holdstub
 import hold_pb2 as holdrpc
 import grpc
-from pyln.client import LightningRpc
-import unittest
 import secrets
 import logging
 from pyln.testing.fixtures import *
-from pyln.testing.utils import wait_for, mine_funding_to_announce
 import time
 import threading
 import os
