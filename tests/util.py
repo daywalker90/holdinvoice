@@ -1,57 +1,42 @@
 from pathlib import Path
-from pyln.testing.fixtures import directory
 import string
 import random
 import logging
 import os
-import requests
-import tarfile
-import platform
 import pytest
+import subprocess
 
-VERSION = "v1.0.0"
+
 RUST_PROFILE = os.environ.get("RUST_PROFILE", "debug")
 COMPILED_PATH = Path.cwd() / "target" / RUST_PROFILE / \
     "holdinvoice"
+DOWNLOAD_PATH = Path.cwd() / "tests" / "holdinvoice"
 
 
 @pytest.fixture
 def get_plugin(directory):
-    downloaded_plugin_path = Path(
-        os.path.join(directory, "holdinvoice.tar.gz"))
-    extracted_plugin_path = Path(os.path.join(directory, "holdinvoice"))
+    LOGGER = logging.getLogger(__name__)
+    proto_folder = os.path.join(Path.cwd(), "proto")
+    grpc_out_folder = os.path.join(Path.cwd(), "tests")
+
+    command = [
+        'python', '-m', 'grpc_tools.protoc',
+        f'--proto_path={proto_folder}',
+        f'--python_out={grpc_out_folder}',
+        f'--grpc_python_out={grpc_out_folder}',
+        'hold.proto', 'primitives.proto'
+    ]
+
+    # Run the command
+    result = subprocess.run(command)
+    LOGGER.info(f"COCK {result}")
+
     if COMPILED_PATH.is_file():
         return COMPILED_PATH
-    elif extracted_plugin_path.is_file():
-        return extracted_plugin_path
+    elif DOWNLOAD_PATH.is_file():
+        return DOWNLOAD_PATH
     else:
-        architecture = get_architecture()
-
-        url = (f"https://github.com/daywalker90/holdinvoice/releases/download/"
-               f"{VERSION}/holdinvoice-{VERSION}-{architecture}.tar.gz")
-        response = requests.get(url)
-        with open(downloaded_plugin_path, "wb") as file:
-            file.write(response.content)
-
-        with tarfile.open(downloaded_plugin_path, "r:gz") as tar:
-            tar.extractall(directory)
-
-        return extracted_plugin_path
-
-
-def get_architecture():
-    machine = platform.machine()
-
-    if machine == 'x86_64':
-        return 'x86_64-linux-gnu'
-    elif machine == 'armv7l':
-        return 'armv7-linux-gnueabihf'
-    elif machine == 'aarch64':
-        return 'aarch64-linux-gnu'
-    else:
-        raise RuntimeError(
-            f"No self-compiled binary found and "
-            f"unsupported release-architecture: {machine}")
+        raise ValueError("No plugin was found.")
 
 
 def generate_random_label():
