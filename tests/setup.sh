@@ -43,11 +43,9 @@ if ! tar -xzvf "$script_dir/holdinvoice-v$version-$architecture.tar.gz" -C "$scr
     echo "Error extracting the contents of holdinvoice-v$version-$architecture.tar.gz" >&2
     exit 1
 fi
-ls -al
-ls -al $pythonLocation
-ls -al $Python3_ROOT_DIR
+
 # Generate grpc files
-if ! $Python3_ROOT_DIR/bin/python3 -m grpc_tools.protoc --proto_path="$script_dir/../proto" --python_out=$script_dir --grpc_python_out=$script_dir hold.proto primitives.proto; then
+if ! $TEST_DIR/bin/python3 -m grpc_tools.protoc --proto_path="$script_dir/../proto" --python_out=$script_dir --grpc_python_out=$script_dir hold.proto primitives.proto; then
     echo "Error generating grpc files" >&2
     exit 1
 fi

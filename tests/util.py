@@ -4,7 +4,6 @@ import random
 import logging
 import os
 import pytest
-import subprocess
 
 
 RUST_PROFILE = os.environ.get("RUST_PROFILE", "debug")
@@ -15,22 +14,6 @@ DOWNLOAD_PATH = Path.cwd() / "tests" / "holdinvoice"
 
 @pytest.fixture
 def get_plugin(directory):
-    LOGGER = logging.getLogger(__name__)
-    proto_folder = os.path.join(Path.cwd(), "proto")
-    grpc_out_folder = os.path.join(Path.cwd(), "tests")
-
-    command = [
-        'python', '-m', 'grpc_tools.protoc',
-        f'--proto_path={proto_folder}',
-        f'--python_out={grpc_out_folder}',
-        f'--grpc_python_out={grpc_out_folder}',
-        'hold.proto', 'primitives.proto'
-    ]
-
-    # Run the command
-    result = subprocess.run(command)
-    LOGGER.info(f"COCK {result}")
-
     if COMPILED_PATH.is_file():
         return COMPILED_PATH
     elif DOWNLOAD_PATH.is_file():
