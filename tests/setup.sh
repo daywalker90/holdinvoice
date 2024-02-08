@@ -44,6 +44,9 @@ if ! tar -xzvf "$script_dir/holdinvoice-v$version-$architecture.tar.gz" -C "$scr
     exit 1
 fi
 
+# need opensll to use grpc
+sudo apt-get update
+sudo apt-get install -y openssl
 # Generate grpc files
 if ! $TEST_DIR/bin/python3 -m grpc_tools.protoc --proto_path="$script_dir/../proto" --python_out=$script_dir --grpc_python_out=$script_dir hold.proto primitives.proto; then
     echo "Error generating grpc files" >&2
