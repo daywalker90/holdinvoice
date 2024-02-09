@@ -12,16 +12,17 @@ import threading
 import os
 import pytest
 from grpc._channel import _InactiveRpcError
-from util import generate_random_label, pay_with_thread
+from util import generate_random_label, pay_with_thread, find_unused_port
 from util import get_plugin
 
 
 def test_inputs(node_factory, get_plugin):
     LOGGER = logging.getLogger(__name__)
+    port = find_unused_port()
     l1, l2 = node_factory.get_nodes(2,
                                     opts=[{},
                                           {'important-plugin': get_plugin,
-                                           'grpc-hold-port': 54345}]
+                                           'grpc-hold-port': port}]
                                     )
     l1.rpc.connect(l2.info['id'], 'localhost', l2.port)
     cl1, _ = l1.fundchannel(l2, 1_000_000)
@@ -44,7 +45,7 @@ def test_inputs(node_factory, get_plugin):
     with open(os.path.join(CLN_DIR, "server.pem"), "rb") as f:
         server_cert = f.read()
 
-    CLN_GRPC_HOLD_HOST = "localhost:54345"
+    CLN_GRPC_HOLD_HOST = f"localhost:{port}"
 
     os.environ["GRPC_SSL_CIPHER_SUITES"] = "HIGH+ECDSA"
 
@@ -136,10 +137,11 @@ def test_inputs(node_factory, get_plugin):
 
 def test_valid_hold_then_settle(node_factory, get_plugin):
     LOGGER = logging.getLogger(__name__)
+    port = find_unused_port()
     l1, l2 = node_factory.get_nodes(2,
                                     opts=[{},
                                           {'important-plugin': get_plugin,
-                                           'grpc-hold-port': 54345}]
+                                           'grpc-hold-port': port}]
                                     )
     l1.rpc.connect(l2.info['id'], 'localhost', l2.port)
     cl1, _ = l1.fundchannel(l2, 1_000_000)
@@ -162,7 +164,7 @@ def test_valid_hold_then_settle(node_factory, get_plugin):
     with open(os.path.join(CLN_DIR, "server.pem"), "rb") as f:
         server_cert = f.read()
 
-    CLN_GRPC_HOLD_HOST = "localhost:54345"
+    CLN_GRPC_HOLD_HOST = f"localhost:{port}"
 
     os.environ["GRPC_SSL_CIPHER_SUITES"] = "HIGH+ECDSA"
 
@@ -281,10 +283,11 @@ def test_valid_hold_then_settle(node_factory, get_plugin):
 
 def test_valid_hold_then_cancel(node_factory, get_plugin):
     LOGGER = logging.getLogger(__name__)
+    port = find_unused_port()
     l1, l2 = node_factory.get_nodes(2,
                                     opts=[{},
                                           {'important-plugin': get_plugin,
-                                           'grpc-hold-port': 54345}]
+                                           'grpc-hold-port': port}]
                                     )
     l1.rpc.connect(l2.info['id'], 'localhost', l2.port)
     cl1, _ = l1.fundchannel(l2, 1_000_000)
@@ -307,7 +310,7 @@ def test_valid_hold_then_cancel(node_factory, get_plugin):
     with open(os.path.join(CLN_DIR, "server.pem"), "rb") as f:
         server_cert = f.read()
 
-    CLN_GRPC_HOLD_HOST = "localhost:54345"
+    CLN_GRPC_HOLD_HOST = f"localhost:{port}"
 
     os.environ["GRPC_SSL_CIPHER_SUITES"] = "HIGH+ECDSA"
 

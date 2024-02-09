@@ -4,6 +4,7 @@ import random
 import logging
 import os
 import pytest
+import socket
 
 
 RUST_PROFILE = os.environ.get("RUST_PROFILE", "debug")
@@ -40,3 +41,10 @@ def pay_with_thread(rpc, bolt11):
     except Exception as e:
         LOGGER.debug(f"holdinvoice: Error paying payment hash:{e}")
         pass
+
+
+def find_unused_port():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(('localhost', 0))
+        _, port = s.getsockname()
+    return port
