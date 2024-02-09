@@ -55,7 +55,8 @@ def test_inputs(node_factory, get_plugin):
         certificate_chain=client_cert,
     )
     # Create the gRPC channel using the SSL credentials
-    holdchannel = grpc.secure_channel(CLN_GRPC_HOLD_HOST, creds)
+    holdchannel = grpc.secure_channel(CLN_GRPC_HOLD_HOST, creds, options=(
+        ('grpc.ssl_target_name_override', 'cln'),))
 
     # Create the gRPC stub
     hold_stub = holdstub.HoldStub(holdchannel)
@@ -172,7 +173,8 @@ def test_valid_hold_then_settle(node_factory, get_plugin):
         certificate_chain=client_cert,
     )
     # Create the gRPC channel using the SSL credentials
-    holdchannel = grpc.secure_channel(CLN_GRPC_HOLD_HOST, creds)
+    holdchannel = grpc.secure_channel(CLN_GRPC_HOLD_HOST, creds, options=(
+        ('grpc.ssl_target_name_override', 'cln'),))
 
     # Create the gRPC stub
     hold_stub = holdstub.HoldStub(holdchannel)
@@ -316,7 +318,8 @@ def test_valid_hold_then_cancel(node_factory, get_plugin):
         certificate_chain=client_cert,
     )
     # Create the gRPC channel using the SSL credentials
-    holdchannel = grpc.secure_channel(CLN_GRPC_HOLD_HOST, creds)
+    holdchannel = grpc.secure_channel(CLN_GRPC_HOLD_HOST, creds, options=(
+        ('grpc.ssl_target_name_override', 'cln'),))
 
     # Create the gRPC stub
     hold_stub = holdstub.HoldStub(holdchannel)
