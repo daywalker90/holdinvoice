@@ -16,7 +16,7 @@ from util import generate_random_label, pay_with_thread, find_unused_port
 from util import get_plugin
 
 
-def test_inputs(node_factory, get_plugin):
+def test_inputs(node_factory, bitcoind, get_plugin):
     LOGGER = logging.getLogger(__name__)
     port = find_unused_port()
     l1, l2 = node_factory.get_nodes(2,
@@ -27,6 +27,8 @@ def test_inputs(node_factory, get_plugin):
     l1.rpc.connect(l2.info['id'], 'localhost', l2.port)
     cl1, _ = l1.fundchannel(l2, 1_000_000)
     cl2, _ = l1.fundchannel(l2, 1_000_000)
+
+    bitcoind.generate_block(6)
 
     l1.wait_channel_active(cl1)
     l1.wait_channel_active(cl2)
@@ -135,7 +137,7 @@ def test_inputs(node_factory, get_plugin):
         hold_stub.HoldInvoice(request)
 
 
-def test_valid_hold_then_settle(node_factory, get_plugin):
+def test_valid_hold_then_settle(node_factory, bitcoind, get_plugin):
     LOGGER = logging.getLogger(__name__)
     port = find_unused_port()
     l1, l2 = node_factory.get_nodes(2,
@@ -146,6 +148,8 @@ def test_valid_hold_then_settle(node_factory, get_plugin):
     l1.rpc.connect(l2.info['id'], 'localhost', l2.port)
     cl1, _ = l1.fundchannel(l2, 1_000_000)
     cl2, _ = l1.fundchannel(l2, 1_000_000)
+
+    bitcoind.generate_block(6)
 
     l1.wait_channel_active(cl1)
     l1.wait_channel_active(cl2)
@@ -281,7 +285,7 @@ def test_valid_hold_then_settle(node_factory, get_plugin):
         hold_stub.HoldInvoiceCancel(request_cancel_settled)
 
 
-def test_valid_hold_then_cancel(node_factory, get_plugin):
+def test_valid_hold_then_cancel(node_factory, bitcoind, get_plugin):
     LOGGER = logging.getLogger(__name__)
     port = find_unused_port()
     l1, l2 = node_factory.get_nodes(2,
@@ -292,6 +296,8 @@ def test_valid_hold_then_cancel(node_factory, get_plugin):
     l1.rpc.connect(l2.info['id'], 'localhost', l2.port)
     cl1, _ = l1.fundchannel(l2, 1_000_000)
     cl2, _ = l1.fundchannel(l2, 1_000_000)
+
+    bitcoind.generate_block(6)
 
     l1.wait_channel_active(cl1)
     l1.wait_channel_active(cl2)

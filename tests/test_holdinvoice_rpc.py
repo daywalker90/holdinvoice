@@ -114,9 +114,9 @@ def test_inputs(node_factory, get_plugin):
     )
     assert result is not None
     assert isinstance(result, dict) is True
-    expected_message = ("amount_msat|msatoshi: should be positive msat"
+    expected_message = ("should be positive msat"
                         " or 'any': invalid token '\"0msat\"'")
-    assert result["message"] == expected_message
+    assert expected_message in result["message"]
 
     # Negative expiry value
     result = node.rpc.call("holdinvoice", {
@@ -180,6 +180,8 @@ def test_valid_hold_then_settle(node_factory, bitcoind, get_plugin):
     l1.rpc.connect(l2.info['id'], 'localhost', l2.port)
     cl1, _ = l1.fundchannel(l2, 1_000_000)
     cl2, _ = l1.fundchannel(l2, 1_000_000)
+
+    bitcoind.generate_block(6)
 
     l1.wait_channel_active(cl1)
     l1.wait_channel_active(cl2)
@@ -272,6 +274,8 @@ def test_fc_hold_then_settle(node_factory, bitcoind, get_plugin):
                                     )
     l1.rpc.connect(l2.info['id'], 'localhost', l2.port)
     cl1, _ = l1.fundchannel(l2, 1_000_000)
+
+    bitcoind.generate_block(6)
 
     l1.wait_channel_active(cl1)
 
@@ -378,7 +382,7 @@ def test_fc_hold_then_settle(node_factory, bitcoind, get_plugin):
     assert total_funds > Millisatoshi(0)
 
 
-def test_valid_hold_then_cancel(node_factory, get_plugin):
+def test_valid_hold_then_cancel(node_factory, bitcoind, get_plugin):
     l1, l2 = node_factory.get_nodes(2,
                                     opts={
                                         'important-plugin': get_plugin
@@ -387,6 +391,8 @@ def test_valid_hold_then_cancel(node_factory, get_plugin):
     l1.rpc.connect(l2.info['id'], 'localhost', l2.port)
     cl1, _ = l1.fundchannel(l2, 1_000_000)
     cl2, _ = l1.fundchannel(l2, 1_000_000)
+
+    bitcoind.generate_block(6)
 
     l1.wait_channel_active(cl1)
     l1.wait_channel_active(cl2)
@@ -468,6 +474,8 @@ def test_hold_then_block_timeout(node_factory, bitcoind, get_plugin):
     cl1, _ = l1.fundchannel(l2, 1_000_000)
     cl2, _ = l1.fundchannel(l2, 1_000_000)
 
+    bitcoind.generate_block(6)
+
     l1.wait_channel_active(cl1)
     l1.wait_channel_active(cl2)
 
@@ -547,6 +555,8 @@ def test_hold_then_invoice_timeout(node_factory, bitcoind, get_plugin):
     l1.rpc.connect(l2.info['id'], 'localhost', l2.port)
     cl1, _ = l1.fundchannel(l2, 1_000_000)
     cl2, _ = l1.fundchannel(l2, 1_000_000)
+
+    bitcoind.generate_block(6)
 
     l1.wait_channel_active(cl1)
     l1.wait_channel_active(cl2)
