@@ -3,10 +3,11 @@ use crate::model::Holdstate;
 use crate::pb::hold_server::HoldServer;
 use crate::util::make_rpc_path;
 use anyhow::{anyhow, Context, Result};
+use cln_plugin::options::{ConfigOption, DefaultIntegerConfigOption, IntegerConfigOption};
+use cln_plugin::Builder;
 use cln_plugin::Plugin;
-use cln_plugin::{options, Builder};
 use log::{debug, info, warn};
-use model::{Config, PluginState};
+use model::PluginState;
 use parking_lot::Mutex;
 use std::collections::BTreeMap;
 use std::net::SocketAddr;
@@ -28,8 +29,25 @@ mod util;
 pub mod pb;
 mod server;
 
+const OPT_GRPC_HOLD_PORT: IntegerConfigOption = ConfigOption::new_i64_no_default(
+    "grpc-hold-port",
+    "Which port should the grpc plugin listen for incoming connections?",
+);
+const OPT_CANCEL_HOLD_BEFORE_HTLC_EXPIRY_BLOCKS: DefaultIntegerConfigOption =
+    ConfigOption::new_i64_with_default(
+        "holdinvoice-cancel-before-htlc-expiry",
+        6,
+        "Number of blocks before expiring htlcs get auto-canceled and invoice is canceled",
+    );
+const OPT_CANCEL_HOLD_BEFORE_INVOICE_EXPIRY_SECONDS: DefaultIntegerConfigOption =
+    ConfigOption::new_i64_with_default(
+        "holdinvoice-cancel-before-invoice-expiry",
+        1_800,
+        "Seconds before invoice expiry when an invoice and pending htlcs get auto-canceled",
+    );
+
 #[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), anyhow::Error> {
     debug!("Starting grpc plugin");
     std::env::set_var("CLN_PLUGIN_LOG", "cln_plugin=info,cln_rpc=info,debug");
 
@@ -39,28 +57,14 @@ async fn main() -> Result<()> {
     let state = PluginState {
         blockheight: Arc::new(Mutex::new(u32::default())),
         holdinvoices: Arc::new(tokio::sync::Mutex::new(BTreeMap::new())),
-        config: Arc::new(Mutex::new(Config::new())),
         identity,
         ca_cert,
     };
-    let defaultconfig = Config::new();
 
     let plugin = match Builder::new(tokio::io::stdin(), tokio::io::stdout())
-        .option(options::ConfigOption::new(
-            "grpc-hold-port",
-            options::Value::Integer(-1),
-            "Which port should the grpc plugin listen for incoming connections?",
-        ))
-        .option(options::ConfigOption::new(
-            &defaultconfig.cancel_hold_before_htlc_expiry_blocks.0,
-            options::Value::OptInteger,
-            "Number of blocks before expiring htlcs get auto-canceled and invoice is canceled",
-        ))
-        .option(options::ConfigOption::new(
-            &defaultconfig.cancel_hold_before_invoice_expiry_seconds.0,
-            options::Value::OptInteger,
-            "Seconds before invoice expiry when an invoice and pending htlcs get auto-canceled",
-        ))
+        .option(OPT_GRPC_HOLD_PORT)
+        .option(OPT_CANCEL_HOLD_BEFORE_HTLC_EXPIRY_BLOCKS)
+        .option(OPT_CANCEL_HOLD_BEFORE_INVOICE_EXPIRY_SECONDS)
         .rpcmethod(
             "holdinvoice",
             "create a new invoice and hold it",
@@ -87,31 +91,24 @@ async fn main() -> Result<()> {
         .await?
     {
         Some(p) => {
-            info!("read config");
-            match config::read_config_options(&p, state.clone()) {
-                Ok(()) => &(),
-                Err(e) => return p.disable(format!("{}", e).as_str()).await,
+            info!("verifying config options");
+            match config::verify_config_options(&p) {
+                Ok(()) => {}
+                Err(e) => return Err(e),
             };
             p
         }
-        None => return Ok(()),
+        None => return Err(anyhow!("Error configuring the plugin!")),
     };
 
-    let bind_port = match plugin.option("grpc-hold-port") {
-        Some(options::Value::Integer(-1)) => {
-            log::info!(
-                "`grpc-hold-port` option is not configured, gRPC server will not bind to a port."
-            );
-            None
-        }
-        Some(options::Value::Integer(i)) => Some(i),
+    let bind_port = match plugin.option(&OPT_GRPC_HOLD_PORT)? {
+        Some(port) => Some(port),
         None => {
             log::info!(
                 "`grpc-hold-port` option not provided, gRPC server will not bind to a port."
             );
             None
         }
-        Some(o) => return Err(anyhow!("grpc-hold-port is not a valid integer: {:?}", o)),
     };
     let confplugin;
     match plugin.start(state.clone()).await {
@@ -133,7 +130,7 @@ async fn main() -> Result<()> {
     }
 
     if let Some(port) = bind_port {
-        let bind_addr: SocketAddr = format!("0.0.0.0:{}", port).parse().unwrap();
+        let bind_addr: SocketAddr = format!("0.0.0.0:{}", port).parse()?;
         let rpc_path = make_rpc_path(confplugin.clone());
         tokio::spawn(run_interface(bind_addr, rpc_path, confplugin.clone()));
     }

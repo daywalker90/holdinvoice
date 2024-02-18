@@ -94,29 +94,8 @@ pub struct HoldInvoice {
 pub struct PluginState {
     pub blockheight: Arc<Mutex<u32>>,
     pub holdinvoices: Arc<tokio::sync::Mutex<BTreeMap<String, HoldInvoice>>>,
-    pub config: Arc<Mutex<Config>>,
     pub identity: Identity,
     pub ca_cert: Vec<u8>,
-}
-
-#[derive(Clone, Debug)]
-pub struct Config {
-    pub cancel_hold_before_htlc_expiry_blocks: (String, u32),
-    pub cancel_hold_before_invoice_expiry_seconds: (String, u64),
-}
-impl Config {
-    pub fn new() -> Config {
-        Config {
-            cancel_hold_before_htlc_expiry_blocks: (
-                HOLD_INVOICE_PLUGIN_NAME.to_string() + "-cancel-before-htlc-expiry",
-                6,
-            ),
-            cancel_hold_before_invoice_expiry_seconds: (
-                HOLD_INVOICE_PLUGIN_NAME.to_string() + "-cancel-before-invoice-expiry",
-                1_800,
-            ),
-        }
-    }
 }
 
 fn is_none_or_empty<T>(f: &Option<Vec<T>>) -> bool

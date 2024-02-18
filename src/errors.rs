@@ -62,6 +62,6 @@ pub fn wrong_hold_state_error(holdstate: Holdstate) -> serde_json::Value {
     })
 }
 
-pub fn config_value_error(name: &str, value: u64) -> String {
-    format!("{} needs to be greater than {}", name, value)
+pub fn config_value_error(name: &str, value: i64) -> String {
+    format!("'{}' is invalid for {}", value, name)
 }

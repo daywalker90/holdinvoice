@@ -19,6 +19,7 @@ use tokio::time::{self};
 use crate::{
     model::{HoldHtlc, HoldInvoice, HtlcIdentifier, PluginState},
     rpc::{datastore_update_state, listdatastore_state},
+    OPT_CANCEL_HOLD_BEFORE_HTLC_EXPIRY_BLOCKS, OPT_CANCEL_HOLD_BEFORE_INVOICE_EXPIRY_SECONDS,
 };
 use crate::{rpc::datastore_htlc_expiry, Holdstate};
 use crate::{
@@ -243,8 +244,11 @@ async fn loop_htlc_hold(
     invoice: ListinvoicesInvoices,
     cltv_expiry: u32,
 ) -> Result<serde_json::Value, Error> {
-    let config = plugin.state().config.lock().clone();
     let mut first_iter = true;
+    let cancel_hold_before_invoice_expiry_seconds =
+        plugin.option(&OPT_CANCEL_HOLD_BEFORE_INVOICE_EXPIRY_SECONDS)? as u64;
+    let cancel_hold_before_htlc_expiry_blocks =
+        plugin.option(&OPT_CANCEL_HOLD_BEFORE_HTLC_EXPIRY_BLOCKS)? as u32;
     loop {
         if !first_iter {
             time::sleep(Duration::from_secs(2)).await;
@@ -268,8 +272,7 @@ async fn loop_htlc_hold(
                     .lock()
                     .await
                     .clone()
-                    || invoice.expires_at
-                        <= now + config.cancel_hold_before_invoice_expiry_seconds.1
+                    || invoice.expires_at <= now + cancel_hold_before_invoice_expiry_seconds
                 {
                     match listdatastore_state(&rpc_path, pay_hash.to_string()).await {
                         Ok(s) => {
@@ -291,9 +294,8 @@ async fn loop_htlc_hold(
                     #[allow(clippy::clone_on_copy)]
                     if cltv_expiry
                         <= plugin.state().blockheight.lock().clone()
-                            + config.cancel_hold_before_htlc_expiry_blocks.1
-                        || invoice.expires_at
-                            <= now + config.cancel_hold_before_invoice_expiry_seconds.1
+                            + cancel_hold_before_htlc_expiry_blocks
+                        || invoice.expires_at <= now + cancel_hold_before_invoice_expiry_seconds
                     {
                         match holdinvoice_data.hold_state {
                             Holdstate::Open | Holdstate::Accepted => {
