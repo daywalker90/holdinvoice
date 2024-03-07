@@ -1,0 +1,10 @@
+plugin:
+  name: holdinvoice
+  version: 1.0.1
+  lang: rust
+  install: |
+    cargo build --release && cp target/release/holdinvoice . && cargo clean
+  main: holdinvoice
+  important: true
+tipping:
+  bolt12: lno1pg9ksmmvv35kuan0d93k2ystv3shjampd34k2u3exqtzzquqaupqnlcmgmpc5d7dgrmp85w6u046fqdfp9ze6mq5xjsw2mja3s
