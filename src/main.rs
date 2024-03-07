@@ -49,7 +49,10 @@ const OPT_CANCEL_HOLD_BEFORE_INVOICE_EXPIRY_SECONDS: DefaultIntegerConfigOption 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), anyhow::Error> {
     debug!("Starting grpc plugin");
-    std::env::set_var("CLN_PLUGIN_LOG", "cln_plugin=info,cln_rpc=info,debug");
+    std::env::set_var(
+        "CLN_PLUGIN_LOG",
+        "cln_plugin=info,cln_rpc=info,cln_grpc=info,holdinvoice=debug,warn",
+    );
 
     let directory = std::env::current_dir()?;
     let (identity, ca_cert) = tls::init(&directory)?;
