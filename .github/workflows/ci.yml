@@ -61,6 +61,7 @@ jobs:
       run: |
         pip3 install --user "pyln-proto<=${{ inputs.pyln-version }}" "pyln-client<=${{ inputs.pyln-version }}" "pyln-testing<=${{ inputs.pyln-version }}"
         pip3 install --user pytest-xdist
+        pip3 install --user grpcio grpcio-tools
 
     - name: Set up Rust
       if:  ${{ inputs.tagged-release == false}}
