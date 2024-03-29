@@ -44,8 +44,29 @@ if ! tar -xzvf "$script_dir/holdinvoice-v$version-$architecture.tar.gz" -C "$scr
     exit 1
 fi
 
+# Function to check if a Python package is installed
+check_package() {
+    python_exec="$1"
+    package_name="$2"
+    if $python_exec -c "import $package_name" &> /dev/null; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Check if the package is installed in the first Python executable
+if check_package "$TEST_DIR/bin/python3" "grpcio"; then
+    python_exec="$TEST_DIR/bin/python3"
+elif check_package "python3" "grpcio"; then
+    python_exec="python3"
+else
+    echo "Error: Package 'grpcio' is not installed" >&2
+    exit 1
+fi
+
 # Generate grpc files
-if ! $TEST_DIR/bin/python3 -m grpc_tools.protoc --proto_path="$script_dir/../proto" --python_out=$script_dir --grpc_python_out=$script_dir hold.proto primitives.proto; then
+if ! "$python_exec" -m grpc_tools.protoc --proto_path="$script_dir/../proto" --python_out=$script_dir --grpc_python_out=$script_dir hold.proto primitives.proto; then
     echo "Error generating grpc files" >&2
     exit 1
 fi

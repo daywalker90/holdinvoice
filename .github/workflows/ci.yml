@@ -61,7 +61,7 @@ jobs:
       run: |
         pip3 install --user "pyln-proto<=${{ inputs.pyln-version }}" "pyln-client<=${{ inputs.pyln-version }}" "pyln-testing<=${{ inputs.pyln-version }}"
         pip3 install --user pytest-xdist
-        pip3 install --user grpcio grpcio-tools
+        pip3 install --user -r tests/requirements.txt
 
     - name: Set up Rust
       if:  ${{ inputs.tagged-release == false}}
@@ -78,6 +78,9 @@ jobs:
           ./setup.sh
           cd ..
         else
+          cd tests
+          ./setup.sh
+          cd ..
           cargo build
         fi
 
