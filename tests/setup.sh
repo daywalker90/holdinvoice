@@ -58,9 +58,9 @@ check_package() {
 }
 
 # Check if the package is installed in the first Python executable
-if check_package "$TEST_DIR/bin/python3" "grpcio"; then
+if check_package "$TEST_DIR/bin/python3" "grpc"; then
     python_exec="$TEST_DIR/bin/python3"
-elif check_package "python3" "grpcio"; then
+elif check_package "python3" "grpc"; then
     python_exec="python3"
 else
     echo "Error: Package 'grpcio' is not installed" >&2
