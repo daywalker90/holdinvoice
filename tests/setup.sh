@@ -44,6 +44,8 @@ if ! tar -xzvf "$script_dir/holdinvoice-v$version-$architecture.tar.gz" -C "$scr
     exit 1
 fi
 
+export PATH="$HOME/.local/bin:$PATH"
+
 # Function to check if a Python package is installed
 check_package() {
     python_exec="$1"
