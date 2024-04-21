@@ -1,6 +1,5 @@
 use std::{
     collections::HashMap,
-    path::PathBuf,
     str::FromStr,
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -9,23 +8,21 @@ use std::{
 use anyhow::{anyhow, Error};
 use cln_plugin::Plugin;
 use cln_rpc::{
-    model::responses::ListinvoicesInvoices,
+    model::{requests::ListinvoicesRequest, responses::ListinvoicesInvoices},
     primitives::{Amount, ShortChannelId},
+    ClnRpc,
 };
 use log::{debug, info, warn};
 use serde_json::json;
 use tokio::time::{self};
 
+use crate::util::{cleanup_pluginstate_holdinvoices, make_rpc_path};
 use crate::{
     model::{HoldHtlc, HoldInvoice, HtlcIdentifier, PluginState},
     rpc::{datastore_update_state, listdatastore_state},
     OPT_CANCEL_HOLD_BEFORE_HTLC_EXPIRY_BLOCKS, OPT_CANCEL_HOLD_BEFORE_INVOICE_EXPIRY_SECONDS,
 };
 use crate::{rpc::datastore_htlc_expiry, Holdstate};
-use crate::{
-    rpc::listinvoices,
-    util::{cleanup_pluginstate_holdinvoices, make_rpc_path},
-};
 
 pub async fn htlc_handler(
     plugin: Plugin<PluginState>,
@@ -38,6 +35,7 @@ pub async fn htlc_handler(
         {
             debug!("payment_hash: `{}`. htlc_hook started!", pay_hash);
             let rpc_path = make_rpc_path(plugin.clone());
+            let mut rpc = ClnRpc::new(&rpc_path).await?;
 
             let is_new_invoice;
             let cltv_expiry;
@@ -70,7 +68,7 @@ pub async fn htlc_handler(
                         pay_hash
                     );
 
-                    match listdatastore_state(&rpc_path, pay_hash.to_string()).await {
+                    match listdatastore_state(&mut rpc, pay_hash.to_string()).await {
                         Ok(dbstate) => {
                             debug!(
                                 "payment_hash: `{}`. Htlc is for a holdinvoice! Processing...",
@@ -83,7 +81,16 @@ pub async fn htlc_handler(
                                 0
                             };
 
-                            invoice = listinvoices(&rpc_path, None, Some(pay_hash.to_string()))
+                            invoice = rpc
+                                .call_typed(&ListinvoicesRequest {
+                                    index: None,
+                                    invstring: None,
+                                    label: None,
+                                    limit: None,
+                                    offer_id: None,
+                                    payment_hash: Some(pay_hash.to_string()),
+                                    start: None,
+                                })
                                 .await?
                                 .invoices
                                 .first()
@@ -150,7 +157,7 @@ pub async fn htlc_handler(
                 };
 
                 if is_new_invoice {
-                    datastore_htlc_expiry(&rpc_path, pay_hash.to_string(), cltv_expiry.to_string())
+                    datastore_htlc_expiry(&mut rpc, pay_hash.to_string(), cltv_expiry.to_string())
                         .await?;
 
                     let mut htlc_data = HashMap::new();
@@ -192,7 +199,7 @@ pub async fn htlc_handler(
 
                     if holdinvoice.last_htlc_expiry != earliest_htlc_expiry {
                         datastore_htlc_expiry(
-                            &rpc_path,
+                            &mut rpc,
                             pay_hash.to_string(),
                             earliest_htlc_expiry.to_string(),
                         )
@@ -223,7 +230,7 @@ pub async fn htlc_handler(
 
             return loop_htlc_hold(
                 plugin.clone(),
-                rpc_path,
+                &mut rpc,
                 pay_hash,
                 global_htlc_ident,
                 invoice,
@@ -238,7 +245,7 @@ pub async fn htlc_handler(
 
 async fn loop_htlc_hold(
     plugin: Plugin<PluginState>,
-    rpc_path: PathBuf,
+    rpc: &mut ClnRpc,
     pay_hash: &str,
     global_htlc_ident: HtlcIdentifier,
     invoice: ListinvoicesInvoices,
@@ -274,7 +281,7 @@ async fn loop_htlc_hold(
                     .clone()
                     || invoice.expires_at <= now + cancel_hold_before_invoice_expiry_seconds
                 {
-                    match listdatastore_state(&rpc_path, pay_hash.to_string()).await {
+                    match listdatastore_state(rpc, pay_hash.to_string()).await {
                         Ok(s) => {
                             holdinvoice_data.hold_state = Holdstate::from_str(&s.string.unwrap())?;
                             holdinvoice_data.generation =
@@ -300,7 +307,7 @@ async fn loop_htlc_hold(
                         match holdinvoice_data.hold_state {
                             Holdstate::Open | Holdstate::Accepted => {
                                 match datastore_update_state(
-                                    &rpc_path,
+                                    rpc,
                                     pay_hash.to_string(),
                                     Holdstate::Canceled.to_string(),
                                     holdinvoice_data.generation,
@@ -344,7 +351,7 @@ async fn loop_htlc_hold(
                                     .is_valid_transition(&Holdstate::Accepted)
                             {
                                 match datastore_update_state(
-                                    &rpc_path,
+                                    rpc,
                                     pay_hash.to_string(),
                                     Holdstate::Accepted.to_string(),
                                     holdinvoice_data.generation,
@@ -391,7 +398,7 @@ async fn loop_htlc_hold(
                                     .sum()
                             {
                                 match datastore_update_state(
-                                    &rpc_path,
+                                    rpc,
                                     pay_hash.to_string(),
                                     Holdstate::Canceled.to_string(),
                                     holdinvoice_data.generation,

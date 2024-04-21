@@ -4,7 +4,6 @@ use crate::pb;
 use crate::pb::hold_server::Hold;
 use crate::util::u64_to_scid;
 use anyhow::Result;
-use bitcoin::hashes::Hash;
 use bitcoin::secp256k1::PublicKey;
 use cln_plugin::Plugin;
 use cln_rpc::primitives::{Amount, Routehint, Routehop};
@@ -260,7 +259,8 @@ impl Hold for Server {
                 description = Some(desc.to_string());
             }
             Bolt11InvoiceDescription::Hash(hash) => {
-                description_hash = Some(hash.0.to_byte_array().to_vec());
+                let bytes: &[u8] = hash.0.as_ref();
+                description_hash = Some(bytes.to_vec());
             }
         }
 
@@ -306,7 +306,10 @@ impl Hold for Server {
         Ok(tonic::Response::new(pb::DecodeBolt11Response {
             description,
             description_hash,
-            payment_hash: invoice.payment_hash().to_byte_array().to_vec(),
+            payment_hash: {
+                let bytes: &[u8] = invoice.payment_hash().as_ref();
+                bytes.to_vec()
+            },
             expiry: invoice.expiry_time().as_secs(),
             amount_msat,
             route_hints: Some(pb::RoutehintList {

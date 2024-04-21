@@ -3,7 +3,10 @@ use std::{str::FromStr, time::Duration};
 use anyhow::{anyhow, Error};
 use cln_plugin::Plugin;
 use cln_rpc::{
-    model::responses::{ListinvoicesInvoicesStatus, ListpeerchannelsChannelsState},
+    model::{
+        requests::{ListinvoicesRequest, ListpeerchannelsRequest},
+        responses::{ListinvoicesInvoicesStatus, ListpeerchannelsChannelsState},
+    },
     ClnRpc, Request, Response,
 };
 use log::{debug, warn};
@@ -15,7 +18,7 @@ use crate::{
     model::{HoldLookupResponse, HoldStateResponse, PluginState},
     rpc::{
         datastore_new_state, datastore_update_state_forced, listdatastore_htlc_expiry,
-        listdatastore_state, listinvoices, listpeerchannels,
+        listdatastore_state,
     },
     util::{build_invoice_request, make_rpc_path, parse_payment_hash},
     Holdstate,
@@ -76,7 +79,7 @@ pub async fn hold_invoice(
         e => return Err(anyhow!("Unexpected result in invoice: {:?}", e)),
     };
     datastore_new_state(
-        &rpc_path,
+        &mut rpc,
         result.payment_hash.to_string(),
         Holdstate::Open.to_string(),
     )
@@ -89,13 +92,14 @@ pub async fn hold_invoice_settle(
     args: serde_json::Value,
 ) -> Result<serde_json::Value, Error> {
     let rpc_path = make_rpc_path(plugin.clone());
+    let mut rpc = ClnRpc::new(&rpc_path).await?;
 
     let pay_hash = match parse_payment_hash(args) {
         Ok(ph) => ph,
         Err(e) => return Ok(e),
     };
 
-    let data = match listdatastore_state(&rpc_path, pay_hash.clone()).await {
+    let data = match listdatastore_state(&mut rpc, pay_hash.clone()).await {
         Ok(d) => d,
         Err(_) => return Ok(payment_hash_missing_error(&pay_hash)),
     };
@@ -104,7 +108,7 @@ pub async fn hold_invoice_settle(
 
     if holdstate.is_valid_transition(&Holdstate::Settled) {
         let result = datastore_update_state_forced(
-            &rpc_path,
+            &mut rpc,
             pay_hash.clone(),
             Holdstate::Settled.to_string(),
         )
@@ -152,13 +156,14 @@ pub async fn hold_invoice_cancel(
     args: serde_json::Value,
 ) -> Result<serde_json::Value, Error> {
     let rpc_path = make_rpc_path(plugin.clone());
+    let mut rpc = ClnRpc::new(&rpc_path).await?;
 
     let pay_hash = match parse_payment_hash(args) {
         Ok(ph) => ph,
         Err(e) => return Ok(e),
     };
 
-    let data = match listdatastore_state(&rpc_path, pay_hash.clone()).await {
+    let data = match listdatastore_state(&mut rpc, pay_hash.clone()).await {
         Ok(d) => d,
         Err(_) => return Ok(payment_hash_missing_error(&pay_hash)),
     };
@@ -167,7 +172,7 @@ pub async fn hold_invoice_cancel(
 
     if holdstate.is_valid_transition(&Holdstate::Canceled) {
         let result = datastore_update_state_forced(
-            &rpc_path,
+            &mut rpc,
             pay_hash.clone(),
             Holdstate::Canceled.to_string(),
         )
@@ -200,13 +205,14 @@ pub async fn hold_invoice_lookup(
     args: serde_json::Value,
 ) -> Result<serde_json::Value, Error> {
     let rpc_path = make_rpc_path(plugin.clone());
+    let mut rpc = ClnRpc::new(&rpc_path).await?;
 
     let pay_hash = match parse_payment_hash(args) {
         Ok(ph) => ph,
         Err(e) => return Ok(e),
     };
 
-    let data = match listdatastore_state(&rpc_path, pay_hash.clone()).await {
+    let data = match listdatastore_state(&mut rpc, pay_hash.clone()).await {
         Ok(d) => d,
         Err(_) => return Ok(payment_hash_missing_error(&pay_hash)),
     };
@@ -216,13 +222,22 @@ pub async fn hold_invoice_lookup(
     let mut htlc_expiry = None;
     match holdstate {
         Holdstate::Open => {
-            let invoices = listinvoices(&rpc_path, None, Some(pay_hash.clone()))
+            let invoices = rpc
+                .call_typed(&ListinvoicesRequest {
+                    index: None,
+                    invstring: None,
+                    label: None,
+                    limit: None,
+                    offer_id: None,
+                    payment_hash: Some(pay_hash.clone()),
+                    start: None,
+                })
                 .await?
                 .invoices;
             if let Some(inv) = invoices.first() {
                 if inv.status == ListinvoicesInvoicesStatus::EXPIRED {
                     datastore_update_state_forced(
-                        &rpc_path,
+                        &mut rpc,
                         pay_hash.clone(),
                         Holdstate::Canceled.to_string(),
                     )
@@ -237,13 +252,17 @@ pub async fn hold_invoice_lookup(
             }
         }
         Holdstate::Accepted => {
-            htlc_expiry = Some(listdatastore_htlc_expiry(&rpc_path, pay_hash.clone()).await?)
+            htlc_expiry = Some(listdatastore_htlc_expiry(&mut rpc, pay_hash.clone()).await?)
         }
         Holdstate::Canceled => {
             let now = Instant::now();
             loop {
                 let mut all_cancelled = true;
-                let channels = match listpeerchannels(&rpc_path).await?.channels {
+                let channels = match rpc
+                    .call_typed(&ListpeerchannelsRequest { id: None })
+                    .await?
+                    .channels
+                {
                     Some(c) => c,
                     None => break,
                 };
@@ -297,7 +316,16 @@ pub async fn hold_invoice_lookup(
         Holdstate::Settled => {
             let now = Instant::now();
             loop {
-                let invoices = listinvoices(&rpc_path, None, Some(pay_hash.clone()))
+                let invoices = rpc
+                    .call_typed(&ListinvoicesRequest {
+                        index: None,
+                        invstring: None,
+                        label: None,
+                        limit: None,
+                        offer_id: None,
+                        payment_hash: Some(pay_hash.clone()),
+                        start: None,
+                    })
                     .await?
                     .invoices;
 
