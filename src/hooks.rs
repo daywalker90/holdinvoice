@@ -400,7 +400,7 @@ async fn loop_htlc_hold(
                                 match datastore_update_state(
                                     rpc,
                                     pay_hash.to_string(),
-                                    Holdstate::Canceled.to_string(),
+                                    Holdstate::Open.to_string(),
                                     holdinvoice_data.generation,
                                 )
                                 .await
@@ -418,7 +418,8 @@ async fn loop_htlc_hold(
                                 warn!(
                                     "payment_hash: `{}` scid: `{}` htlc: `{}`. \
                                     No longer enough msats for holdinvoice! \
-                                    Canceling htlcs...",
+                                    This should only happen during a node restart! \
+                                    Back to OPEN state!",
                                     pay_hash, global_htlc_ident.scid, global_htlc_ident.htlc_id
                                 );
                             } else {
