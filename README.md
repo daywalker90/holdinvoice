@@ -66,24 +66,26 @@ There are five methods provided by this plugin:
     * To get routehints, which the rust crates currently do not provide
 * ``holdinvoice``: amount_msat label description [expiry]
 [fallbacks] [preimage] cltv [deschashonly] 
-    * create an invoice where the htlcs will be held by the plugin, it has almost the same options as cln's invoice, but cltv is required
+    * create an invoice where the HTLC's will be held by the plugin, it has almost the same options as cln's invoice, but cltv is required
 * ``holdinvoicesettle``: payment_hash 
-    * order plugin to settle a holdinvoice with enough htlcs being held, does not wait for actual setllement of htlcs
+    * order plugin to settle a holdinvoice with enough HTLC's being held, does not wait for actual setllement of HTLC's
 * ``holdinvoicecancel``: payment_hash
-    * order plugin to cancel a holdinvoice and return any pending htlcs back, does not wait for actual return of htlcs
+    * order plugin to cancel a holdinvoice and return any pending HTLC's back, does not wait for actual return of HTLC's
 * ``holdinvoicelookup``: payment_hash
     * look up the holdstate of a holdinvoice and if it's in the ACCEPTED holdstate return the ``htlc_expiry``
-    * waits for actual settlement or return of htlcs (with a timeout) and doublechecks holdstate with invoice state
+    * waits for actual settlement or return of HTLC's (with a timeout) and doublechecks holdstate with invoice state
     * valid holdstates are:
-        * OPEN (no or not enough htlcs pending)
-        * ACCEPTED (enough htlcs to fulfill the invoice pending)
+        * OPEN (no or not enough HTLC's pending)
+        * ACCEPTED (enough HTLC's to fulfill the invoice pending)
         * SETTLED (invoice paid)
-        * CANCELED (invoice unpaid and will not accept any further htlcs even if not yet expired)
+        * CANCELED (invoice unpaid and will not accept any further HTLC's even if not yet expired)
 
-The plugin will automatically cancel any invoice if *it* is either close to expiry (this is one major difference to the way lnd does it because cln can't settle with an expired invoice) or if a pending htlc is close to expiry and would otherwise cause a force close of the channel. You can configure when this happens with the options below.
+The plugin will automatically cancel any invoice if *it* is either close to expiry (this is one major difference to the way lnd does it because cln can't settle with an expired invoice) or if a pending HTLC is close to expiry and would otherwise cause a force close of the channel. You can configure when this happens with the options below.
+
+During a node restart invoices that were previously in the ACCEPTED state can temporarily be back in the OPEN state, because the HTLC's get replayed to the plugin during startup.
 
 # Options
 You can set the following options in your cln config file:
 
-* ``holdinvoice-cancel-before-htlc-expiry``: number of blocks before htlcs expiry where the plugin auto-cancels invoice and htlcs, Default: ``6``
-* ``holdinvoice-cancel-before-invoice-expiry``: number of seconds before invoice expiry where the plugin auto cancels any pending htlcs and no longer accepts new htlcs, Default: ``1800``
+* ``holdinvoice-cancel-before-htlc-expiry``: number of blocks before HTLC's expiry where the plugin auto-cancels invoice and HTLC's, Default: ``6``
+* ``holdinvoice-cancel-before-invoice-expiry``: number of seconds before invoice expiry where the plugin auto cancels any pending HTLC's and no longer accepts new HTLC's, Default: ``1800``
