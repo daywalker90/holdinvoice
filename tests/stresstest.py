@@ -35,10 +35,16 @@ def test_stress(node_factory, bitcoind, get_plugin):  # noqa: F811
     LOGGER = logging.getLogger(__name__)
     l1, l2 = node_factory.get_nodes(2, opts={"important-plugin": get_plugin})
     l1.fundwallet((amount_msat / 1000) * num_iterations * 20)
-    LOGGER.info("holdinvoice: Funding secured")
+    LOGGER.info("holdinvoice: Wallet funded")
     l1.rpc.connect(l2.info["id"], "localhost", l2.port)
+
+    opened = 0
+    batch = 10
+    LOGGER.info(
+        f"holdinvoice: Opening {(int(num_iterations / 7) + 1) * batch} channels..."
+    )
     for _ in range(int(num_iterations / 7) + 1):
-        for _ in range(10):
+        for _ in range(batch):
             res = l1.rpc.fundchannel(
                 l2.info["id"], int((amount_msat * 0.95) / 1000), minconf=0
             )
@@ -52,7 +58,8 @@ def test_stress(node_factory, bitcoind, get_plugin):  # noqa: F811
             bitcoind.rpc.getblockcount(), txnum, res["outnum"]
         )
         mine_funding_to_announce(bitcoind, [l1])
-        LOGGER.info("holdinvoice: Funded 10 channels")
+        opened += batch
+        LOGGER.info(f"holdinvoice: Opened {opened} channels")
 
     l1.wait_channel_active(scid)
     wait_for(
@@ -63,10 +70,9 @@ def test_stress(node_factory, bitcoind, get_plugin):  # noqa: F811
     )
 
     payment_hashes = []
+    invoices = []
 
-    LOGGER.info(
-        f"holdinvoice: Creating and paying {num_iterations} invoices..."
-    )
+    LOGGER.info(f"holdinvoice: Creating {num_iterations} invoices...")
     for _ in range(num_iterations):
         label = generate_random_label()
 
@@ -83,14 +89,19 @@ def test_stress(node_factory, bitcoind, get_plugin):  # noqa: F811
             )
             payment_hash = invoice["payment_hash"]
             payment_hashes.append(payment_hash)
-
-            # Pay the invoice using a separate thread
-            threading.Thread(
-                target=pay_with_thread, args=(l1, invoice["bolt11"])
-            ).start()
-            time.sleep(1)
+            invoices.append(invoice["bolt11"])
         except Exception as e:
             LOGGER.error("holdinvoice: Error executing command:", e)
+
+    stats = lookup_stats(l2.rpc, payment_hashes)
+    LOGGER.info(stats)
+    assert stats["open"] == num_iterations
+
+    LOGGER.info(f"holdinvoice: Paying {num_iterations} invoices...")
+    for bolt11 in invoices:
+        # Pay the invoice using a separate thread
+        threading.Thread(target=pay_with_thread, args=(l1, bolt11)).start()
+        time.sleep(0.5)
 
     LOGGER.info(f"holdinvoice: Done paying {num_iterations} invoices!")
     # wait a little more for payments to arrive
@@ -104,29 +115,54 @@ def test_stress(node_factory, bitcoind, get_plugin):  # noqa: F811
     assert stats["accepted"] == num_iterations
 
     LOGGER.info(f"holdinvoice: Holding htlcs for {delay_seconds} seconds...")
-
     time.sleep(delay_seconds)
 
     stats = lookup_stats(l2.rpc, payment_hashes)
     LOGGER.info(stats)
     assert stats["accepted"] == num_iterations
 
-    LOGGER.info(f"holdinvoice: Cancelling all {num_iterations} invoices...")
-    for payment_hash in payment_hashes:
-        try:
-            l2.rpc.call("holdinvoicecancel", {"payment_hash": payment_hash})
-        except Exception as e:
-            LOGGER.error(
-                f"holdinvoice: holdinvoice:Error cancelling "
-                f"payment hash {payment_hash}:",
-                e,
-            )
+    LOGGER.info("holdinvoice: Restarting node...")
+    l2.restart()
 
     wait_for(
-        lambda: lookup_stats(l2.rpc, payment_hashes)["canceled"]
+        lambda: lookup_stats(l2.rpc, payment_hashes)["accepted"]
         == num_iterations
     )
 
     stats = lookup_stats(l2.rpc, payment_hashes)
     LOGGER.info(stats)
-    assert stats["canceled"] == num_iterations
+    assert stats["accepted"] == num_iterations
+
+    mid = num_iterations // 2
+
+    LOGGER.info(f"holdinvoice: Cancelling {mid} invoices...")
+    for payment_hash in payment_hashes[:mid]:
+        try:
+            l2.rpc.call("holdinvoicecancel", {"payment_hash": payment_hash})
+        except Exception as e:
+            LOGGER.error(
+                f"holdinvoice: Error cancelling payment hash {payment_hash}:",
+                e,
+            )
+
+    wait_for(lambda: lookup_stats(l2.rpc, payment_hashes)["canceled"] == mid)
+
+    LOGGER.info(f"holdinvoice: Settling {num_iterations - mid} invoices...")
+    for payment_hash in payment_hashes[mid:]:
+        try:
+            l2.rpc.call("holdinvoicesettle", {"payment_hash": payment_hash})
+        except Exception as e:
+            LOGGER.error(
+                f"holdinvoice: Error settling payment hash {payment_hash}:",
+                e,
+            )
+
+    wait_for(
+        lambda: lookup_stats(l2.rpc, payment_hashes)["settled"]
+        == num_iterations - mid
+    )
+
+    stats = lookup_stats(l2.rpc, payment_hashes)
+    LOGGER.info(stats)
+    assert stats["canceled"] == mid
+    assert stats["settled"] == num_iterations - mid
