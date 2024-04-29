@@ -1,15 +1,14 @@
-from pathlib import Path
-import string
-import random
 import logging
 import os
-import pytest
+import random
 import socket
+import string
+from pathlib import Path
 
+import pytest
 
 RUST_PROFILE = os.environ.get("RUST_PROFILE", "debug")
-COMPILED_PATH = Path.cwd() / "target" / RUST_PROFILE / \
-    "holdinvoice"
+COMPILED_PATH = Path.cwd() / "target" / RUST_PROFILE / "holdinvoice"
 DOWNLOAD_PATH = Path.cwd() / "tests" / "holdinvoice"
 
 
@@ -25,8 +24,9 @@ def get_plugin(directory):
 
 def generate_random_label():
     label_length = 8
-    random_label = ''.join(random.choice(string.ascii_letters)
-                           for _ in range(label_length))
+    random_label = "".join(
+        random.choice(string.ascii_letters) for _ in range(label_length)
+    )
     return random_label
 
 
@@ -39,12 +39,12 @@ def pay_with_thread(rpc, bolt11):
     try:
         rpc.dev_pay(bolt11, dev_use_shadow=False)
     except Exception as e:
-        LOGGER.debug(f"holdinvoice: Error paying payment hash:{e}")
+        LOGGER.info(f"holdinvoice: Error paying payment hash:{e}")
         pass
 
 
 def find_unused_port():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(('localhost', 0))
+        s.bind(("localhost", 0))
         _, port = s.getsockname()
     return port
