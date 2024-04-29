@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unrelease]
+
+### Fixed
+
+- Added now required `failure_message` to hook results with `fail`
+
 ## [1.0.2] - 2024-04-21
 
 ### Fixed

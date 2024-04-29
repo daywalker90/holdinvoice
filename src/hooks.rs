@@ -24,6 +24,8 @@ use crate::{
 };
 use crate::{rpc::datastore_htlc_expiry, Holdstate};
 
+const WIRE_INCORRECT_OR_UNKNOWN_PAYMENT_DETAILS: &str = "400F";
+
 pub async fn htlc_handler(
     plugin: Plugin<PluginState>,
     v: serde_json::Value,
@@ -54,7 +56,8 @@ pub async fn htlc_handler(
                 if let Some(holdinvoice) = holdinvoices.get_mut(&pay_hash.to_string()) {
                     is_new_invoice = false;
                     debug!(
-                        "payment_hash: `{}`. Htlc is for a known holdinvoice! Processing...",
+                        "payment_hash: `{}`. Htlc is for a \
+                        known holdinvoice! Processing...",
                         pay_hash
                     );
 
@@ -64,14 +67,16 @@ pub async fn htlc_handler(
                 } else {
                     is_new_invoice = true;
                     debug!(
-                        "payment_hash: `{}`. New htlc, checking if it's our invoice...",
+                        "payment_hash: `{}`. New htlc, \
+                        checking if it's our invoice...",
                         pay_hash
                     );
 
                     match listdatastore_state(&mut rpc, pay_hash.to_string()).await {
                         Ok(dbstate) => {
                             debug!(
-                                "payment_hash: `{}`. Htlc is for a holdinvoice! Processing...",
+                                "payment_hash: `{}`. Htlc is for a \
+                                holdinvoice! Processing...",
                                 pay_hash
                             );
                             hold_state = Holdstate::from_str(&dbstate.string.unwrap())?;
@@ -102,7 +107,8 @@ pub async fn htlc_handler(
                         }
                         Err(_e) => {
                             debug!(
-                                "payment_hash: `{}`. Not a holdinvoice! Continue...",
+                                "payment_hash: `{}`. Not a holdinvoice! \
+                                Continue...",
                                 pay_hash
                             );
                             return Ok(json!({"result": "continue"}));
@@ -114,20 +120,26 @@ pub async fn htlc_handler(
                     chid.as_u64().unwrap()
                 } else {
                     warn!(
-                        "payment_hash: `{}`. htlc id not found! Rejecting htlc...",
+                        "payment_hash: `{}`. htlc id not found! \
+                        Rejecting htlc...",
                         pay_hash
                     );
-                    return Ok(json!({"result": "fail"}));
+                    return Ok(json!({"result": "fail",
+                        "failure_message": get_failure_message(*plugin.state().blockheight.lock(),0)
+                    }));
                 };
 
                 scid = if let Some(id) = htlc.get("short_channel_id") {
                     ShortChannelId::from_str(id.as_str().unwrap())?
                 } else {
                     warn!(
-                        "payment_hash: `{}`. short_channel_id not found! Rejecting htlc...",
+                        "payment_hash: `{}`. short_channel_id not found! \
+                        Rejecting htlc...",
                         pay_hash
                     );
-                    return Ok(json!({"result": "fail"}));
+                    return Ok(json!({"result": "fail",
+                        "failure_message": get_failure_message(*plugin.state().blockheight.lock(),0)
+                    }));
                 };
 
                 global_htlc_ident = HtlcIdentifier {
@@ -139,10 +151,13 @@ pub async fn htlc_handler(
                     ce.as_u64().unwrap() as u32
                 } else {
                     warn!(
-                        "payment_hash: `{}`. cltv_expiry not found! Rejecting htlc...",
+                        "payment_hash: `{}`. cltv_expiry not found! \
+                        Rejecting htlc...",
                         pay_hash
                     );
-                    return Ok(json!({"result": "fail"}));
+                    return Ok(json!({"result": "fail",
+                        "failure_message": get_failure_message(*plugin.state().blockheight.lock(),0)
+                    }));
                 };
 
                 amount_msat = if let Some(amt) = htlc.get("amount_msat") {
@@ -153,7 +168,9 @@ pub async fn htlc_handler(
                             amount_msat not found! Rejecting htlc...",
                         pay_hash, global_htlc_ident.scid, global_htlc_ident.htlc_id
                     );
-                    return Ok(json!({"result": "fail"}));
+                    return Ok(json!({"result": "fail",
+                        "failure_message": get_failure_message(*plugin.state().blockheight.lock(),0)
+                    }));
                 };
 
                 if is_new_invoice {
@@ -220,11 +237,16 @@ pub async fn htlc_handler(
                 cleanup_pluginstate_holdinvoices(&mut holdinvoices, pay_hash, &global_htlc_ident)
                     .await;
 
-                return Ok(json!({"result": "fail"}));
+                return Ok(json!({"result": "fail",
+                "failure_message": get_failure_message(
+                    *plugin.state().blockheight.lock(),
+                    amount_msat)
+                }));
             }
 
             info!(
-                "payment_hash: `{}` scid: `{}` htlc_id: `{}`. Holding {}msat",
+                "payment_hash: `{}` scid: `{}` htlc_id: `{}`. \
+                Holding {}msat",
                 pay_hash, global_htlc_ident.scid, global_htlc_ident.htlc_id, amount_msat
             );
 
@@ -235,6 +257,7 @@ pub async fn htlc_handler(
                 global_htlc_ident,
                 invoice,
                 cltv_expiry,
+                amount_msat,
             )
             .await;
         }
@@ -250,6 +273,7 @@ async fn loop_htlc_hold(
     global_htlc_ident: HtlcIdentifier,
     invoice: ListinvoicesInvoices,
     cltv_expiry: u32,
+    amount_msat: u64,
 ) -> Result<serde_json::Value, Error> {
     let mut first_iter = true;
     let cancel_hold_before_invoice_expiry_seconds =
@@ -468,7 +492,11 @@ async fn loop_htlc_hold(
                             )
                             .await;
 
-                            return Ok(json!({"result": "fail"}));
+                            return Ok(json!({"result": "fail",
+                            "failure_message": get_failure_message(
+                                *plugin.state().blockheight.lock(),
+                                amount_msat)
+                            }));
                         }
                     }
                 }
@@ -485,6 +513,16 @@ async fn loop_htlc_hold(
             }
         }
     }
+}
+
+fn get_failure_message(blockheight: u32, amount_msat: u64) -> String {
+    let hex_amount_msat = format!("{:016X}", amount_msat);
+    let hex_blockheight = format!("{:08X}", blockheight);
+
+    format!(
+        "{}{}{}",
+        WIRE_INCORRECT_OR_UNKNOWN_PAYMENT_DETAILS, hex_amount_msat, hex_blockheight
+    )
 }
 
 pub async fn block_added(plugin: Plugin<PluginState>, v: serde_json::Value) -> Result<(), Error> {
