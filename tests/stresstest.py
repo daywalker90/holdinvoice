@@ -18,7 +18,7 @@ amount_msat = 1_000_100_000
 
 def lookup_stats(rpc, payment_hashes):
     LOGGER = logging.getLogger(__name__)
-    state_counts = {"open": 0, "settled": 0, "canceled": 0, "accepted": 0}
+    state_counts = {"OPEN": 0, "SETTLED": 0, "CANCELED": 0, "ACCEPTED": 0}
     for payment_hash in payment_hashes:
         try:
             invoice_info = rpc.holdinvoicelookup(payment_hash)
@@ -95,43 +95,49 @@ def test_stress(node_factory, bitcoind, get_plugin):  # noqa: F811
 
     stats = lookup_stats(l2.rpc, payment_hashes)
     LOGGER.info(stats)
-    assert stats["open"] == num_iterations
+    assert stats["OPEN"] == num_iterations
 
     LOGGER.info(f"holdinvoice: Paying {num_iterations} invoices...")
     for bolt11 in invoices:
         # Pay the invoice using a separate thread
         threading.Thread(target=pay_with_thread, args=(l1, bolt11)).start()
-        time.sleep(0.5)
+        time.sleep(0.75)
 
     LOGGER.info(f"holdinvoice: Done paying {num_iterations} invoices!")
     # wait a little more for payments to arrive
     wait_for(
-        lambda: lookup_stats(l2.rpc, payment_hashes)["accepted"]
+        lambda: lookup_stats(l2.rpc, payment_hashes)["ACCEPTED"]
         == num_iterations
     )
 
     stats = lookup_stats(l2.rpc, payment_hashes)
     LOGGER.info(stats)
-    assert stats["accepted"] == num_iterations
+    assert stats["ACCEPTED"] == num_iterations
 
-    LOGGER.info(f"holdinvoice: Holding htlcs for {delay_seconds} seconds...")
+    htlc_count = 0
+    for chan in l1.rpc.listpeerchannels()["channels"]:
+        htlc_count += len(chan["htlcs"])
+
+    LOGGER.info(
+        f"holdinvoice: Holding {htlc_count} htlcs for {delay_seconds} seconds..."
+    )
     time.sleep(delay_seconds)
 
     stats = lookup_stats(l2.rpc, payment_hashes)
     LOGGER.info(stats)
-    assert stats["accepted"] == num_iterations
+    assert stats["ACCEPTED"] == num_iterations
 
     LOGGER.info("holdinvoice: Restarting node...")
     l2.restart()
 
     wait_for(
-        lambda: lookup_stats(l2.rpc, payment_hashes)["accepted"]
+        lambda: lookup_stats(l2.rpc, payment_hashes)["ACCEPTED"]
         == num_iterations
     )
 
     stats = lookup_stats(l2.rpc, payment_hashes)
     LOGGER.info(stats)
-    assert stats["accepted"] == num_iterations
+    assert stats["ACCEPTED"] == num_iterations
 
     mid = num_iterations // 2
 
@@ -145,7 +151,7 @@ def test_stress(node_factory, bitcoind, get_plugin):  # noqa: F811
                 e,
             )
 
-    wait_for(lambda: lookup_stats(l2.rpc, payment_hashes)["canceled"] == mid)
+    wait_for(lambda: lookup_stats(l2.rpc, payment_hashes)["CANCELED"] == mid)
 
     LOGGER.info(f"holdinvoice: Settling {num_iterations - mid} invoices...")
     for payment_hash in payment_hashes[mid:]:
@@ -158,11 +164,11 @@ def test_stress(node_factory, bitcoind, get_plugin):  # noqa: F811
             )
 
     wait_for(
-        lambda: lookup_stats(l2.rpc, payment_hashes)["settled"]
+        lambda: lookup_stats(l2.rpc, payment_hashes)["SETTLED"]
         == num_iterations - mid
     )
 
     stats = lookup_stats(l2.rpc, payment_hashes)
     LOGGER.info(stats)
-    assert stats["canceled"] == mid
-    assert stats["settled"] == num_iterations - mid
+    assert stats["CANCELED"] == mid
+    assert stats["SETTLED"] == num_iterations - mid
