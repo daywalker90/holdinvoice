@@ -40,6 +40,7 @@ pub async fn hold_invoice(
         "preimage",
         "cltv",
         "deschashonly",
+        "exposeprivatechannels",
     ];
 
     let mut new_args = serde_json::Value::Object(Default::default());
@@ -132,7 +133,7 @@ pub async fn hold_invoice_settle(
                 }
 
                 Ok(json!(HoldStateResponse {
-                    state: Holdstate::Settled.to_string(),
+                    state: Holdstate::Settled,
                 }))
             }
             Err(e) => {
@@ -187,7 +188,7 @@ pub async fn hold_invoice_cancel(
                 }
 
                 Ok(json!(HoldStateResponse {
-                    state: Holdstate::Canceled.to_string(),
+                    state: Holdstate::Canceled,
                 }))
             }
             Err(e) => Err(anyhow!(
@@ -243,7 +244,7 @@ pub async fn hold_invoice_lookup(
                     )
                     .await?;
                     return Ok(json!(HoldLookupResponse {
-                        state: Holdstate::Canceled.to_string(),
+                        state: Holdstate::Canceled,
                         htlc_expiry
                     }));
                 }
@@ -354,7 +355,7 @@ pub async fn hold_invoice_lookup(
         }
     }
     Ok(json!(HoldLookupResponse {
-        state: holdstate.to_string(),
+        state: holdstate,
         htlc_expiry
     }))
 }

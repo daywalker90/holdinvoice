@@ -61,9 +61,7 @@ After that the binary will be here: ``target/release/holdinvoice``
 Note: Release binaries are built using ``cross`` and the ``optimized`` profile.
 
 # Documentation
-There are five methods provided by this plugin:
-* (GRPC ONLY) ``DecodeBolt11``:  bolt11
-    * To get routehints, which the rust crates currently do not provide
+There are four methods provided by this plugin:
 * ``holdinvoice``: amount_msat label description [expiry]
 [fallbacks] [preimage] cltv [deschashonly] 
     * create an invoice where the HTLC's will be held by the plugin, it has almost the same options as cln's invoice, but cltv is required

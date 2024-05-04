@@ -8,7 +8,6 @@ package cln;
 import "primitives.proto";
 
 service Hold {
-	rpc DecodeBolt11(DecodeBolt11Request) returns (DecodeBolt11Response) {}
 	rpc HoldInvoice(HoldInvoiceRequest) returns (HoldInvoiceResponse) {}
 	rpc HoldInvoiceSettle(HoldInvoiceSettleRequest) returns (HoldInvoiceSettleResponse) {}
 	rpc HoldInvoiceCancel(HoldInvoiceCancelRequest) returns (HoldInvoiceCancelResponse) {}
@@ -16,22 +15,6 @@ service Hold {
 	
 }
 
-
-
-message DecodeBolt11Request{
-	string bolt11 = 1;
-	optional string description = 2;
-}
-
-message DecodeBolt11Response{
-	optional string description = 1;
-	optional bytes description_hash = 2;
-	bytes payment_hash = 3;
-	uint64 expiry = 5;
-	optional Amount amount_msat = 6;
-	RoutehintList route_hints = 4;
-	uint32 timestamp = 7;
-}
 
 message HoldInvoiceRequest {
 	Amount amount_msat = 10;
@@ -41,6 +24,7 @@ message HoldInvoiceRequest {
 	repeated string fallbacks = 4;
 	optional bytes preimage = 5;
 	optional uint32 cltv = 6;
+	repeated string exposeprivatechannels = 8;
 	optional bool deschashonly = 9;
 }
 
@@ -54,6 +38,7 @@ message HoldInvoiceResponse {
 	optional string warning_deadends = 7;
 	optional string warning_private_unused = 8;
 	optional string warning_mpp = 9;
+	optional uint64 created_index = 10;
 }
 
 message HoldInvoiceSettleRequest {
@@ -61,12 +46,6 @@ message HoldInvoiceSettleRequest {
 }
 
 message HoldInvoiceSettleResponse {
-	enum Holdstate {
-		OPEN = 0;
-		SETTLED = 1;
-		CANCELED = 2;
-		ACCEPTED = 3;
-	}
 	Holdstate state = 1;
 }
 
@@ -75,12 +54,6 @@ message HoldInvoiceCancelRequest {
 }
 
 message HoldInvoiceCancelResponse {
-	enum Holdstate {
-		OPEN = 0;
-		SETTLED = 1;
-		CANCELED = 2;
-		ACCEPTED = 3;
-	}
 	Holdstate state = 1;
 }
 
@@ -89,12 +62,6 @@ message HoldInvoiceLookupRequest {
 }
 
 message HoldInvoiceLookupResponse {
-	enum Holdstate {
-		OPEN = 0;
-		SETTLED = 1;
-		CANCELED = 2;
-		ACCEPTED = 3;
-	}
 	Holdstate state = 1;
 	optional uint32 htlc_expiry = 2;
 }

@@ -20,7 +20,8 @@ pub const HOLD_INVOICE_PLUGIN_NAME: &str = "holdinvoice";
 pub const HOLD_INVOICE_DATASTORE_STATE: &str = "state";
 pub const HOLD_INVOICE_DATASTORE_HTLC_EXPIRY: &str = "expiry";
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
 pub enum Holdstate {
     Open,
     Settled,
@@ -48,10 +49,10 @@ impl Holdstate {
 impl fmt::Display for Holdstate {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Holdstate::Open => write!(f, "open"),
-            Holdstate::Settled => write!(f, "settled"),
-            Holdstate::Canceled => write!(f, "canceled"),
-            Holdstate::Accepted => write!(f, "accepted"),
+            Holdstate::Open => write!(f, "OPEN"),
+            Holdstate::Settled => write!(f, "SETTLED"),
+            Holdstate::Canceled => write!(f, "CANCELED"),
+            Holdstate::Accepted => write!(f, "ACCEPTED"),
         }
     }
 }
@@ -105,27 +106,6 @@ where
     f.as_ref().map_or(true, |value| value.is_empty())
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(tag = "method", content = "params")]
-#[serde(rename_all = "lowercase")]
-pub enum Request {
-    HoldInvoice(HoldInvoiceRequest),
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(tag = "method", content = "result")]
-#[serde(rename_all = "lowercase")]
-pub enum Response {
-    HoldInvoice(HoldInvoiceResponse),
-}
-
-pub trait IntoRequest: Into<Request> {
-    type Response: TryFrom<Response, Error = TryFromResponseError>;
-}
-
-#[derive(Debug)]
-pub struct TryFromResponseError;
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct HoldInvoiceRequest {
     pub amount_msat: u64,
@@ -133,6 +113,8 @@ pub struct HoldInvoiceRequest {
     pub label: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expiry: Option<u64>,
+    #[serde(skip_serializing_if = "is_none_or_empty")]
+    pub exposeprivatechannels: Option<Vec<ShortChannelId>>,
     #[serde(skip_serializing_if = "is_none_or_empty")]
     pub fallbacks: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -143,15 +125,6 @@ pub struct HoldInvoiceRequest {
     pub deschashonly: Option<bool>,
 }
 
-impl From<HoldInvoiceRequest> for Request {
-    fn from(r: HoldInvoiceRequest) -> Self {
-        Request::HoldInvoice(r)
-    }
-}
-
-impl IntoRequest for HoldInvoiceRequest {
-    type Response = HoldInvoiceResponse;
-}
 #[allow(unused_variables, deprecated)]
 impl From<HoldInvoiceRequest> for pb::HoldInvoiceRequest {
     fn from(c: HoldInvoiceRequest) -> Self {
@@ -163,6 +136,10 @@ impl From<HoldInvoiceRequest> for pb::HoldInvoiceRequest {
             label: c.label,             // Rule #2 for type string
             expiry: c.expiry,           // Rule #2 for type u64?
             // Field: Invoice.fallbacks[]
+            exposeprivatechannels: c
+                .exposeprivatechannels
+                .map(|arr| arr.into_iter().map(|i| i.to_string()).collect())
+                .unwrap_or_default(), // Rule #3
             fallbacks: c
                 .fallbacks
                 .map(|arr| arr.into_iter().collect())
@@ -185,6 +162,12 @@ impl From<pb::HoldInvoiceRequest> for HoldInvoiceRequest {
             description: c.description, // Rule #1 for type string
             label: c.label,             // Rule #1 for type string
             expiry: c.expiry,           // Rule #1 for type u64?
+            exposeprivatechannels: Some(
+                c.exposeprivatechannels
+                    .into_iter()
+                    .map(|s| cln_rpc::primitives::ShortChannelId::from_str(&s).unwrap())
+                    .collect(),
+            ), // Rule #4
             fallbacks: Some(c.fallbacks.into_iter().collect()), // Rule #4
             preimage: c.preimage.map(hex::encode), // Rule #1 for type hex?
             cltv: c.cltv,               // Rule #1 for type u32?
@@ -209,18 +192,8 @@ pub struct HoldInvoiceResponse {
     pub warning_private_unused: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub warning_mpp: Option<String>,
-}
-
-#[allow(unreachable_patterns)]
-impl TryFrom<Response> for HoldInvoiceResponse {
-    type Error = TryFromResponseError;
-
-    fn try_from(response: Response) -> Result<Self, Self::Error> {
-        match response {
-            Response::HoldInvoice(response) => Ok(response),
-            _ => Err(TryFromResponseError),
-        }
-    }
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_index: Option<u64>,
 }
 
 #[allow(unused_variables, deprecated)]
@@ -236,18 +209,19 @@ impl From<HoldInvoiceResponse> for pb::HoldInvoiceResponse {
             warning_deadends: c.warning_deadends,      // Rule #2 for type string?
             warning_private_unused: c.warning_private_unused, // Rule #2 for type string?
             warning_mpp: c.warning_mpp,                // Rule #2 for type string?
+            created_index: c.created_index,            // Rule #2 for type u64?
         }
     }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct HoldLookupResponse {
-    pub state: String,
+    pub state: Holdstate,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub htlc_expiry: Option<u32>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct HoldStateResponse {
-    pub state: String,
+    pub state: Holdstate,
 }

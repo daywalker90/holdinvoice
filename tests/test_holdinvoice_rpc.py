@@ -237,7 +237,7 @@ def test_valid_hold_then_settle(node_factory, bitcoind, get_plugin):  # noqa: F8
     assert result_lookup is not None
     assert isinstance(result_lookup, dict) is True
     assert "state" in result_lookup
-    assert result_lookup["state"] == "open"
+    assert result_lookup["state"] == "OPEN"
     assert "htlc_expiry" not in result_lookup
 
     # test that it won't settle if it's still open
@@ -246,7 +246,7 @@ def test_valid_hold_then_settle(node_factory, bitcoind, get_plugin):  # noqa: F8
     )
     assert result_settle is not None
     assert isinstance(result_settle, dict) is True
-    expected_message = "Holdinvoice is in wrong state: 'open'"
+    expected_message = "Holdinvoice is in wrong state: 'OPEN'"
     assert result_settle["message"] == expected_message
 
     threading.Thread(
@@ -263,12 +263,12 @@ def test_valid_hold_then_settle(node_factory, bitcoind, get_plugin):  # noqa: F8
         assert result_lookup is not None
         assert isinstance(result_lookup, dict) is True
 
-        if result_lookup["state"] == "accepted":
+        if result_lookup["state"] == "ACCEPTED":
             break
         else:
             time.sleep(1)
 
-    assert result_lookup["state"] == "accepted"
+    assert result_lookup["state"] == "ACCEPTED"
     assert "htlc_expiry" in result_lookup
 
     # test that it's actually holding the htlcs
@@ -285,14 +285,14 @@ def test_valid_hold_then_settle(node_factory, bitcoind, get_plugin):  # noqa: F8
     )
     assert result_settle is not None
     assert isinstance(result_settle, dict) is True
-    assert result_settle["state"] == "settled"
+    assert result_settle["state"] == "SETTLED"
 
     result_lookup = l2.rpc.call(
         "holdinvoicelookup", {"payment_hash": invoice["payment_hash"]}
     )
     assert result_lookup is not None
     assert isinstance(result_lookup, dict) is True
-    assert result_lookup["state"] == "settled"
+    assert result_lookup["state"] == "SETTLED"
     assert "htlc_expiry" not in result_lookup
 
     # ask cln if the invoice is actually paid
@@ -309,7 +309,7 @@ def test_valid_hold_then_settle(node_factory, bitcoind, get_plugin):  # noqa: F8
     )
     assert result_cancel_settled is not None
     assert isinstance(result_cancel_settled, dict) is True
-    expected_message = "Holdinvoice is in wrong " "state: 'settled'"
+    expected_message = "Holdinvoice is in wrong " "state: 'SETTLED'"
     assert result_cancel_settled["message"] == expected_message
 
 
@@ -357,12 +357,12 @@ def test_fc_hold_then_settle(node_factory, bitcoind, get_plugin):  # noqa: F811
         assert result_lookup is not None
         assert isinstance(result_lookup, dict) is True
 
-        if result_lookup["state"] == "accepted":
+        if result_lookup["state"] == "ACCEPTED":
             break
         else:
             time.sleep(1)
 
-    assert result_lookup["state"] == "accepted"
+    assert result_lookup["state"] == "ACCEPTED"
     assert "htlc_expiry" in result_lookup
 
     # test that it's actually holding the htlcs
@@ -391,14 +391,14 @@ def test_fc_hold_then_settle(node_factory, bitcoind, get_plugin):  # noqa: F811
     )
     assert result_settle is not None
     assert isinstance(result_settle, dict) is True
-    assert result_settle["state"] == "settled"
+    assert result_settle["state"] == "SETTLED"
 
     result_lookup = l2.rpc.call(
         "holdinvoicelookup", {"payment_hash": invoice["payment_hash"]}
     )
     assert result_lookup is not None
     assert isinstance(result_lookup, dict) is True
-    assert result_lookup["state"] == "settled"
+    assert result_lookup["state"] == "SETTLED"
     assert "htlc_expiry" not in result_lookup
 
     # ask cln if the invoice is actually paid
@@ -485,7 +485,7 @@ def test_valid_hold_then_cancel(node_factory, bitcoind, get_plugin):  # noqa: F8
     assert result_lookup is not None
     assert isinstance(result_lookup, dict) is True
     assert "state" in result_lookup
-    assert result_lookup["state"] == "open"
+    assert result_lookup["state"] == "OPEN"
     assert "htlc_expiry" not in result_lookup
 
     threading.Thread(
@@ -502,12 +502,12 @@ def test_valid_hold_then_cancel(node_factory, bitcoind, get_plugin):  # noqa: F8
         assert result_lookup is not None
         assert isinstance(result_lookup, dict) is True
 
-        if result_lookup["state"] == "accepted":
+        if result_lookup["state"] == "ACCEPTED":
             break
         else:
             time.sleep(1)
 
-    assert result_lookup["state"] == "accepted"
+    assert result_lookup["state"] == "ACCEPTED"
     assert "htlc_expiry" in result_lookup
 
     result_cancel = l2.rpc.call(
@@ -515,14 +515,14 @@ def test_valid_hold_then_cancel(node_factory, bitcoind, get_plugin):  # noqa: F8
     )
     assert result_cancel is not None
     assert isinstance(result_cancel, dict) is True
-    assert result_cancel["state"] == "canceled"
+    assert result_cancel["state"] == "CANCELED"
 
     result_lookup = l2.rpc.call(
         "holdinvoicelookup", {"payment_hash": invoice["payment_hash"]}
     )
     assert result_lookup is not None
     assert isinstance(result_lookup, dict) is True
-    assert result_lookup["state"] == "canceled"
+    assert result_lookup["state"] == "CANCELED"
     assert "htlc_expiry" not in result_lookup
 
     doublecheck = only_one(
@@ -538,7 +538,7 @@ def test_valid_hold_then_cancel(node_factory, bitcoind, get_plugin):  # noqa: F8
     )
     assert result_settle_canceled is not None
     assert isinstance(result_settle_canceled, dict) is True
-    expected_message = "Holdinvoice is in wrong " "state: 'canceled'"
+    expected_message = "Holdinvoice is in wrong " "state: 'CANCELED'"
     result_settle_canceled["message"] == expected_message
 
 
@@ -578,7 +578,7 @@ def test_hold_then_block_timeout(node_factory, bitcoind, get_plugin):  # noqa: F
     assert result_lookup is not None
     assert isinstance(result_lookup, dict) is True
     assert "state" in result_lookup
-    assert result_lookup["state"] == "open"
+    assert result_lookup["state"] == "OPEN"
     assert "htlc_expiry" not in result_lookup
 
     threading.Thread(
@@ -595,12 +595,12 @@ def test_hold_then_block_timeout(node_factory, bitcoind, get_plugin):  # noqa: F
         assert result_lookup is not None
         assert isinstance(result_lookup, dict) is True
 
-        if result_lookup["state"] == "accepted":
+        if result_lookup["state"] == "ACCEPTED":
             break
         else:
             time.sleep(1)
 
-    assert result_lookup["state"] == "accepted"
+    assert result_lookup["state"] == "ACCEPTED"
     assert "htlc_expiry" in result_lookup
 
     bitcoind.generate_block(10)
@@ -616,7 +616,7 @@ def test_hold_then_block_timeout(node_factory, bitcoind, get_plugin):  # noqa: F
         assert result_lookup is not None
         assert isinstance(result_lookup, dict) is True
 
-        if result_lookup["state"] == "canceled":
+        if result_lookup["state"] == "CANCELED":
             break
         else:
             time.sleep(1)
@@ -624,7 +624,7 @@ def test_hold_then_block_timeout(node_factory, bitcoind, get_plugin):  # noqa: F
     assert result_lookup is not None
     assert isinstance(result_lookup, dict) is True
     assert "state" in result_lookup
-    assert result_lookup["state"] == "canceled"
+    assert result_lookup["state"] == "CANCELED"
     assert "htlc_expiry" not in result_lookup
 
     assert l1.is_local_channel_active(cl1) is True
@@ -669,7 +669,7 @@ def test_hold_then_invoice_timeout(node_factory, bitcoind, get_plugin):  # noqa:
     assert result_lookup is not None
     assert isinstance(result_lookup, dict) is True
     assert "state" in result_lookup
-    assert result_lookup["state"] == "open"
+    assert result_lookup["state"] == "OPEN"
     assert "htlc_expiry" not in result_lookup
 
     threading.Thread(
@@ -686,12 +686,12 @@ def test_hold_then_invoice_timeout(node_factory, bitcoind, get_plugin):  # noqa:
         assert result_lookup is not None
         assert isinstance(result_lookup, dict) is True
 
-        if result_lookup["state"] == "accepted":
+        if result_lookup["state"] == "ACCEPTED":
             break
         else:
             time.sleep(1)
 
-    assert result_lookup["state"] == "accepted"
+    assert result_lookup["state"] == "ACCEPTED"
     assert "htlc_expiry" in result_lookup
 
     assert invoice_time > time.time()
@@ -704,5 +704,5 @@ def test_hold_then_invoice_timeout(node_factory, bitcoind, get_plugin):  # noqa:
     assert result_lookup is not None
     assert isinstance(result_lookup, dict) is True
     assert "state" in result_lookup
-    assert result_lookup["state"] == "canceled"
+    assert result_lookup["state"] == "CANCELED"
     assert "htlc_expiry" not in result_lookup

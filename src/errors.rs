@@ -24,6 +24,13 @@ pub fn invalid_input_error(input: &str) -> serde_json::Value {
     })
 }
 
+pub fn invalid_scid_error(input: &str) -> serde_json::Value {
+    json!({
+        "code": -1,
+        "message": format!("Invalid short_channel_id: '{}'", input)
+    })
+}
+
 pub fn invalid_hash_error(name: &str, token: &str) -> serde_json::Value {
     json!({
         "code": -32602,

@@ -8,7 +8,7 @@ use crate::{
     OPT_CANCEL_HOLD_BEFORE_INVOICE_EXPIRY_SECONDS,
 };
 
-use cln_plugin::{Error, Plugin};
+use cln_plugin::Plugin;
 use cln_rpc::model::requests::InvoiceRequest;
 use cln_rpc::primitives::{Amount, AmountOrAny, ShortChannelId};
 use serde_json::json;
@@ -17,13 +17,6 @@ use crate::model::{HoldInvoice, HtlcIdentifier};
 
 pub fn make_rpc_path(plugin: Plugin<PluginState>) -> PathBuf {
     Path::new(&plugin.configuration().lightning_dir).join(plugin.configuration().rpc_file)
-}
-
-pub fn u64_to_scid(scid: u64) -> Result<ShortChannelId, Error> {
-    let block_height = scid >> 40;
-    let tx_index = (scid >> 16) & 0xFFFFFF;
-    let output_index = scid & 0xFFFF;
-    ShortChannelId::from_str(&format!("{}x{}x{}", block_height, tx_index, output_index))
 }
 
 pub async fn cleanup_pluginstate_holdinvoices(
@@ -145,10 +138,15 @@ pub fn build_invoice_request(
 
     let fallbacks = if let Some(fbcks) = args.get("fallbacks") {
         Some(if let Some(fbcks_arr) = fbcks.as_array() {
-            fbcks_arr
-                .iter()
-                .filter_map(|value| value.as_str().map(|s| s.to_string()))
-                .collect()
+            let mut fbs = Vec::new();
+            for fallback in fbcks_arr {
+                if let Some(fb_str) = fallback.as_str() {
+                    fbs.push(fb_str.to_owned())
+                } else {
+                    return Err(invalid_input_error(&fallback.to_string()));
+                }
+            }
+            fbs
         } else {
             return Err(json!({
                 "code": -32602,
@@ -210,6 +208,32 @@ pub fn build_invoice_request(
         None
     };
 
+    let exposeprivatechannels = if let Some(expose) = args.get("exposeprivatechannels") {
+        Some(if let Some(expose_arr) = expose.as_array() {
+            let mut scids = Vec::new();
+            for scid_val in expose_arr {
+                if let Some(scid_str) = scid_val.as_str() {
+                    if let Ok(scid) = ShortChannelId::from_str(scid_str) {
+                        scids.push(scid)
+                    } else {
+                        return Err(invalid_scid_error(scid_str));
+                    }
+                } else {
+                    return Err(invalid_input_error(&scid_val.to_string()));
+                }
+            }
+            scids
+        } else {
+            return Err(json!({
+                "code": -32602,
+                "message": format!("exposeprivatechannels: should be an array: \
+                invalid token '{}'", expose.to_string())
+            }));
+        })
+    } else {
+        None
+    };
+
     Ok(InvoiceRequest {
         amount_msat,
         label,
@@ -219,5 +243,6 @@ pub fn build_invoice_request(
         preimage,
         cltv,
         deschashonly,
+        exposeprivatechannels,
     })
 }
