@@ -259,29 +259,15 @@ pub async fn hold_invoice_lookup(
             let now = Instant::now();
             loop {
                 let mut all_cancelled = true;
-                let channels = match rpc
+                let channels = rpc
                     .call_typed(&ListpeerchannelsRequest { id: None })
                     .await?
-                    .channels
-                {
-                    Some(c) => c,
-                    None => break,
-                };
+                    .channels;
 
                 for chan in channels {
-                    let connected = if let Some(c) = chan.peer_connected {
-                        c
-                    } else {
-                        continue;
-                    };
-                    let state = if let Some(s) = chan.state {
-                        s
-                    } else {
-                        continue;
-                    };
-                    if !connected
-                        || state != ListpeerchannelsChannelsState::CHANNELD_NORMAL
-                            && state != ListpeerchannelsChannelsState::CHANNELD_AWAITING_SPLICE
+                    if !chan.peer_connected
+                        || chan.state != ListpeerchannelsChannelsState::CHANNELD_NORMAL
+                            && chan.state != ListpeerchannelsChannelsState::CHANNELD_AWAITING_SPLICE
                     {
                         continue;
                     }
@@ -292,10 +278,12 @@ pub async fn hold_invoice_lookup(
                         continue;
                     };
                     for htlc in htlcs {
-                        if let Some(ph) = htlc.payment_hash {
-                            if ph.to_string() == pay_hash {
-                                all_cancelled = false;
-                            }
+                        if htlc
+                            .payment_hash
+                            .to_string()
+                            .eq_ignore_ascii_case(&pay_hash)
+                        {
+                            all_cancelled = false;
                         }
                     }
                 }
