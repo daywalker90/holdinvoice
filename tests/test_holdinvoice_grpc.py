@@ -152,12 +152,18 @@ def test_inputs(node_factory, bitcoind, get_plugin):  # noqa: F811
         amount_msat=primitives__pb2.Amount(msat=1000000),
         label=generate_random_label(),
         cltv=144,
-        exposeprivatechannels=[cl3],
+        exposeprivatechannels=[cl2],
     )
     result = hold_stub.HoldInvoice(request)
     assert result is not None
     assert isinstance(result, holdrpc.HoldInvoiceResponse) is True
     assert result.payment_hash is not None
+
+    decode_result = l2.rpc.decodepay(result.bolt11)
+    assert "routes" in decode_result
+    assert len(decode_result["routes"]) == 1
+    assert len(decode_result["routes"][0]) == 1
+    assert cl2 == decode_result["routes"][0][0]["short_channel_id"]
 
 
 def test_valid_hold_then_settle(node_factory, bitcoind, get_plugin):  # noqa: F811
