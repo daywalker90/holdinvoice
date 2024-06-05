@@ -1,10 +1,25 @@
 # Changelog
 
-## [Unreleased]
+## [2.0.0] - 2024-05-06
+
+### Added
+
+- Newly supported invoice fields ``exposeprivatechannels`` and ``created_index``
+
+### Changed
+
+- Error on not decodeable ``fallbacks`` in ``HoldInvoiceRequest``'s instead of skipping them
+- ``HoldState`` is now a primitive inside primitives.proto
+- ``HoldState`` is now consistently UPPERCASE everywhere if represented as a string
+
+### Removed
+
+- ``DecodeBolt11``, it is now supported by ``cln-grpc`` to have routes in the decode/decodepay responses
 
 ### Fixed
 
-- Added now required `failure_message` to hook results with `fail`
+- Crash in cln v24.05 caused by missing `failure_message` in hook response with `result`:`fail`
+
 
 ## [1.0.2] - 2024-04-21
 
