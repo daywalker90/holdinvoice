@@ -251,6 +251,8 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 [[package]]
 name = "cln-plugin"
 version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d6b096d2f2a7c58c6faaff1b64281a4c30ff078ec3ca746975fb76ac1a6d6e1f"
 dependencies = [
  "anyhow",
  "bytes",
@@ -268,6 +270,8 @@ dependencies = [
 [[package]]
 name = "cln-rpc"
 version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "974dac6f40275b7b828087f4f9973c39658f9b4a46cc589c083a2c6c27cf67cb"
 dependencies = [
  "anyhow",
  "bitcoin",
