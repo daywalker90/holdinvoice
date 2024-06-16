@@ -11,17 +11,6 @@ service Hold {
 	
 }
 
-message Amount {
-	uint64 msat = 1;
-}
-
-enum Holdstate {
-	OPEN = 0;
-	SETTLED = 1;
-	CANCELED = 2;
-	ACCEPTED = 3;
-}
-
 message HoldInvoiceRequest {
 	Amount amount_msat = 10;
 	string description = 2;

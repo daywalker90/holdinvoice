@@ -4,7 +4,7 @@
 
 ### Changed
 
-- Merged `primitives.proto` into `hold.proto`. It was already very small and conflicting with CLN's `primitives.proto`
+- Renamed `primitives.proto` to `hold_primitives.proto` as to not be confused with CLN's `primitives.proto`
 
 
 ## [2.0.0] - 2024-05-06
