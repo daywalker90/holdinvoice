@@ -9,6 +9,7 @@ import time
 import grpc
 import hold_pb2 as holdrpc
 import hold_pb2_grpc as holdstub
+import hold_primitives_pb2 as hold_primitives__pb2
 import pytest
 from grpc._channel import _InactiveRpcError
 from pyln.testing.fixtures import *  # noqa: F403
@@ -72,7 +73,7 @@ def test_inputs(node_factory, bitcoind, get_plugin):  # noqa: F811
 
     request = holdrpc.HoldInvoiceRequest(
         description="Valid invoice description",
-        amount_msat=holdrpc.Amount(msat=1000000),
+        amount_msat=hold_primitives__pb2.Amount(msat=1000000),
         label=generate_random_label(),
         cltv=144,
     )
@@ -83,7 +84,7 @@ def test_inputs(node_factory, bitcoind, get_plugin):  # noqa: F811
 
     request = holdrpc.HoldInvoiceRequest(
         description="",
-        amount_msat=holdrpc.Amount(msat=1000000),
+        amount_msat=hold_primitives__pb2.Amount(msat=1000000),
         label=generate_random_label(),
         cltv=144,
     )
@@ -94,7 +95,7 @@ def test_inputs(node_factory, bitcoind, get_plugin):  # noqa: F811
 
     random_hex = secrets.token_hex(32)
     request = holdrpc.HoldInvoiceRequest(
-        amount_msat=holdrpc.Amount(msat=2000000),
+        amount_msat=hold_primitives__pb2.Amount(msat=2000000),
         description="Invoice with optional fields",
         label=generate_random_label(),
         expiry=3600,
@@ -114,7 +115,7 @@ def test_inputs(node_factory, bitcoind, get_plugin):  # noqa: F811
     # 0 amount_msat
     request = holdrpc.HoldInvoiceRequest(
         description="Invalid amount",
-        amount_msat=holdrpc.Amount(msat=0),
+        amount_msat=hold_primitives__pb2.Amount(msat=0),
         label=generate_random_label(),
         cltv=144,
     )
@@ -127,7 +128,7 @@ def test_inputs(node_factory, bitcoind, get_plugin):  # noqa: F811
     # Fallbacks not as a list of strings
     request = holdrpc.HoldInvoiceRequest(
         description="Invalid fallbacks",
-        amount_msat=holdrpc.Amount(msat=800000),
+        amount_msat=hold_primitives__pb2.Amount(msat=800000),
         label=generate_random_label(),
         fallbacks="invalid_fallback",
         cltv=144,
@@ -138,7 +139,7 @@ def test_inputs(node_factory, bitcoind, get_plugin):  # noqa: F811
     # missing cltv
     request = holdrpc.HoldInvoiceRequest(
         description="Missing cltv",
-        amount_msat=holdrpc.Amount(msat=800000),
+        amount_msat=hold_primitives__pb2.Amount(msat=800000),
         label=generate_random_label(),
     )
     with pytest.raises(
@@ -148,7 +149,7 @@ def test_inputs(node_factory, bitcoind, get_plugin):  # noqa: F811
 
     request = holdrpc.HoldInvoiceRequest(
         description="Expose private channel",
-        amount_msat=holdrpc.Amount(msat=1000000),
+        amount_msat=hold_primitives__pb2.Amount(msat=1000000),
         label=generate_random_label(),
         cltv=144,
         exposeprivatechannels=[cl2],
@@ -216,7 +217,7 @@ def test_valid_hold_then_settle(node_factory, bitcoind, get_plugin):  # noqa: F8
 
     request = holdrpc.HoldInvoiceRequest(
         description="Valid invoice description",
-        amount_msat=holdrpc.Amount(msat=1_000_100_000),
+        amount_msat=hold_primitives__pb2.Amount(msat=1_000_100_000),
         label=generate_random_label(),
         cltv=144,
     )
@@ -233,7 +234,7 @@ def test_valid_hold_then_settle(node_factory, bitcoind, get_plugin):  # noqa: F8
     assert isinstance(result_lookup, holdrpc.HoldInvoiceLookupResponse) is True
     assert result_lookup.state is not None
     LOGGER.info(f"{result_lookup}")
-    assert result_lookup.state == holdrpc.Holdstate.OPEN
+    assert result_lookup.state == hold_primitives__pb2.Holdstate.OPEN
     assert result_lookup.htlc_expiry == 0
 
     # test that it won't settle if it's still open
@@ -261,12 +262,12 @@ def test_valid_hold_then_settle(node_factory, bitcoind, get_plugin):  # noqa: F8
             isinstance(result_lookup, holdrpc.HoldInvoiceLookupResponse) is True
         )
 
-        if result_lookup.state == holdrpc.Holdstate.ACCEPTED:
+        if result_lookup.state == hold_primitives__pb2.Holdstate.ACCEPTED:
             break
         else:
             time.sleep(1)
 
-    assert result_lookup.state == holdrpc.Holdstate.ACCEPTED
+    assert result_lookup.state == hold_primitives__pb2.Holdstate.ACCEPTED
     assert result_lookup.htlc_expiry > 0
 
     # test that it's actually holding the htlcs
@@ -282,7 +283,7 @@ def test_valid_hold_then_settle(node_factory, bitcoind, get_plugin):  # noqa: F8
     result_settle = hold_stub.HoldInvoiceSettle(request_settle)
     assert result_settle is not None
     assert isinstance(result_settle, holdrpc.HoldInvoiceSettleResponse) is True
-    assert result_settle.state == holdrpc.Holdstate.SETTLED
+    assert result_settle.state == hold_primitives__pb2.Holdstate.SETTLED
 
     request_lookup = holdrpc.HoldInvoiceLookupRequest(
         payment_hash=result.payment_hash
@@ -290,7 +291,7 @@ def test_valid_hold_then_settle(node_factory, bitcoind, get_plugin):  # noqa: F8
     result_lookup = hold_stub.HoldInvoiceLookup(request_lookup)
     assert result_lookup is not None
     assert isinstance(result_lookup, holdrpc.HoldInvoiceLookupResponse) is True
-    assert result_lookup.state == holdrpc.Holdstate.SETTLED
+    assert result_lookup.state == hold_primitives__pb2.Holdstate.SETTLED
     assert result_lookup.htlc_expiry == 0
 
     # ask cln if the invoice is actually paid
@@ -362,7 +363,7 @@ def test_valid_hold_then_cancel(node_factory, bitcoind, get_plugin):  # noqa: F8
 
     request = holdrpc.HoldInvoiceRequest(
         description="Valid invoice description",
-        amount_msat=holdrpc.Amount(msat=1_000_100_000),
+        amount_msat=hold_primitives__pb2.Amount(msat=1_000_100_000),
         label=generate_random_label(),
         cltv=144,
     )
@@ -379,7 +380,7 @@ def test_valid_hold_then_cancel(node_factory, bitcoind, get_plugin):  # noqa: F8
     assert isinstance(result_lookup, holdrpc.HoldInvoiceLookupResponse) is True
     assert result_lookup.state is not None
     LOGGER.info(f"{result_lookup}")
-    assert result_lookup.state == holdrpc.Holdstate.OPEN
+    assert result_lookup.state == hold_primitives__pb2.Holdstate.OPEN
     assert result_lookup.htlc_expiry == 0
 
     # test that it won't settle if it's still open
@@ -407,12 +408,12 @@ def test_valid_hold_then_cancel(node_factory, bitcoind, get_plugin):  # noqa: F8
             isinstance(result_lookup, holdrpc.HoldInvoiceLookupResponse) is True
         )
 
-        if result_lookup.state == holdrpc.Holdstate.ACCEPTED:
+        if result_lookup.state == hold_primitives__pb2.Holdstate.ACCEPTED:
             break
         else:
             time.sleep(1)
 
-    assert result_lookup.state == holdrpc.Holdstate.ACCEPTED
+    assert result_lookup.state == hold_primitives__pb2.Holdstate.ACCEPTED
     assert result_lookup.htlc_expiry > 0
 
     # test that it's actually holding the htlcs
@@ -428,7 +429,7 @@ def test_valid_hold_then_cancel(node_factory, bitcoind, get_plugin):  # noqa: F8
     result_cancel = hold_stub.HoldInvoiceCancel(request_cancel)
     assert result_cancel is not None
     assert isinstance(result_cancel, holdrpc.HoldInvoiceCancelResponse) is True
-    assert result_cancel.state == holdrpc.Holdstate.CANCELED
+    assert result_cancel.state == hold_primitives__pb2.Holdstate.CANCELED
 
     request_lookup = holdrpc.HoldInvoiceLookupRequest(
         payment_hash=result.payment_hash
@@ -436,7 +437,7 @@ def test_valid_hold_then_cancel(node_factory, bitcoind, get_plugin):  # noqa: F8
     result_lookup = hold_stub.HoldInvoiceLookup(request_lookup)
     assert result_lookup is not None
     assert isinstance(result_lookup, holdrpc.HoldInvoiceLookupResponse) is True
-    assert result_lookup.state == holdrpc.Holdstate.CANCELED
+    assert result_lookup.state == hold_primitives__pb2.Holdstate.CANCELED
     assert result_lookup.htlc_expiry == 0
 
     # ask cln if the invoice is actually unpaid
