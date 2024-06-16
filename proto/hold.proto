@@ -1,7 +1,6 @@
 syntax = "proto3";
-package cln;
+package hold;
 
-import "hold_primitives.proto";
 
 service Hold {
 	rpc HoldInvoice(HoldInvoiceRequest) returns (HoldInvoiceResponse) {}
@@ -9,6 +8,17 @@ service Hold {
 	rpc HoldInvoiceCancel(HoldInvoiceCancelRequest) returns (HoldInvoiceCancelResponse) {}
 	rpc HoldInvoiceLookup(HoldInvoiceLookupRequest) returns (HoldInvoiceLookupResponse) {}
 	
+}
+
+message Amount {
+	uint64 msat = 1;
+}
+
+enum Holdstate {
+	OPEN = 0;
+	SETTLED = 1;
+	CANCELED = 2;
+	ACCEPTED = 3;
 }
 
 message HoldInvoiceRequest {

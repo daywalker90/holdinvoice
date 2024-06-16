@@ -1,4 +1,4 @@
-tonic::include_proto!("cln");
+tonic::include_proto!("hold");
 
 use cln_rpc::primitives::Amount as JAmount;
 

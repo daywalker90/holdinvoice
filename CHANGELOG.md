@@ -4,7 +4,8 @@
 
 ### Changed
 
-- Renamed `primitives.proto` to `hold_primitives.proto` as to not be confused with CLN's `primitives.proto`
+- Merged `primitives.proto` into `hold.proto`. It was already very small and conflicting with CLN's `primitives.proto`
+- Renamed proto package name from `cln` to `hold` so this plugin can stand alone and work together with cln-grpc
 
 
 ## [2.0.0] - 2024-05-06
