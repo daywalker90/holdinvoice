@@ -7,3 +7,4 @@
 /tests/hold_primitives_pb2.py
 /tests/hold_primitives_pb2_grpc.py
 /tests/plugins/
+/result/
