@@ -537,7 +537,7 @@ checksum = "3011d1213f159867b13cfd6ac92d2cd5f1345762c63be3554e84092d85a50bbd"
 
 [[package]]
 name = "holdinvoice"
-version = "3.0.0"
+version = "3.1.0"
 dependencies = [
  "anyhow",
  "bitcoin",

@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.1.0] - 2024-09-23
+
+### Added
+- nix flake (thanks to @RCasatta)
+
+### Changed
+- updated dependencies
+
 ## [3.0.0] - 2024-06-16
 
 ### Changed
