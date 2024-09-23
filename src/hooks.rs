@@ -80,11 +80,7 @@ pub async fn htlc_handler(
                                 pay_hash
                             );
                             hold_state = Holdstate::from_str(&dbstate.string.unwrap())?;
-                            generation = if let Some(g) = dbstate.generation {
-                                g
-                            } else {
-                                0
-                            };
+                            generation = dbstate.generation.unwrap_or(0);
 
                             invoice = rpc
                                 .call_typed(&ListinvoicesRequest {
@@ -308,8 +304,7 @@ async fn loop_htlc_hold(
                     match listdatastore_state(rpc, pay_hash.to_string()).await {
                         Ok(s) => {
                             holdinvoice_data.hold_state = Holdstate::from_str(&s.string.unwrap())?;
-                            holdinvoice_data.generation =
-                                if let Some(g) = s.generation { g } else { 0 };
+                            holdinvoice_data.generation = s.generation.unwrap_or(0);
                         }
                         Err(e) => {
                             warn!(
