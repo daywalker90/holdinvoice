@@ -37,7 +37,7 @@ def generate_random_number():
 def pay_with_thread(rpc, bolt11):
     LOGGER = logging.getLogger(__name__)
     try:
-        rpc.dev_pay(bolt11, dev_use_shadow=False)
+        rpc.dev_pay(bolt11, dev_use_shadow=False, retry_for=10)
     except Exception as e:
         LOGGER.info(f"holdinvoice: Error paying payment hash:{e}")
         pass
