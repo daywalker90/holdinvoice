@@ -136,9 +136,7 @@ def test_inputs(node_factory, get_plugin):  # noqa: F811
     )
     assert result is not None
     assert isinstance(result, dict) is True
-    expected_message = (
-        "should be positive msat" " or 'any': invalid token '\"0msat\"'"
-    )
+    expected_message = "should be positive msat or 'any': invalid token '\"0msat\"'"
     assert expected_message in result["message"]
 
     # Negative expiry value
@@ -155,7 +153,7 @@ def test_inputs(node_factory, get_plugin):  # noqa: F811
     assert result is not None
     assert isinstance(result, dict) is True
     expected_message = (
-        "expiry: should be an unsigned " "64 bit integer: invalid token '-3600'"
+        "expiry: should be an unsigned 64 bit integer: invalid token '-3600'"
     )
     assert result["message"] == expected_message
 
@@ -173,7 +171,7 @@ def test_inputs(node_factory, get_plugin):  # noqa: F811
     assert result is not None
     assert isinstance(result, dict) is True
     expected_message = (
-        "fallbacks: should be an array: " "invalid token '\"invalid_fallback\"'"
+        "fallbacks: should be an array: invalid token '\"invalid_fallback\"'"
     )
     assert result["message"] == expected_message
 
@@ -189,7 +187,7 @@ def test_inputs(node_factory, get_plugin):  # noqa: F811
     )
     assert result is not None
     assert isinstance(result, dict) is True
-    expected_message = "cltv: should be an integer: " "invalid token '-144'"
+    expected_message = "cltv: should be an integer: invalid token '-144'"
     assert result["message"] == expected_message
 
     # Missing cltv option
@@ -249,9 +247,7 @@ def test_valid_hold_then_settle(node_factory, bitcoind, get_plugin):  # noqa: F8
     expected_message = "Holdinvoice is in wrong state: 'OPEN'"
     assert result_settle["message"] == expected_message
 
-    threading.Thread(
-        target=pay_with_thread, args=(l1, invoice["bolt11"])
-    ).start()
+    threading.Thread(target=pay_with_thread, args=(l1, invoice["bolt11"])).start()
 
     timeout = 10
     start_time = time.time()
@@ -309,7 +305,7 @@ def test_valid_hold_then_settle(node_factory, bitcoind, get_plugin):  # noqa: F8
     )
     assert result_cancel_settled is not None
     assert isinstance(result_cancel_settled, dict) is True
-    expected_message = "Holdinvoice is in wrong " "state: 'SETTLED'"
+    expected_message = "Holdinvoice is in wrong state: 'SETTLED'"
     assert result_cancel_settled["message"] == expected_message
 
 
@@ -343,9 +339,7 @@ def test_fc_hold_then_settle(node_factory, bitcoind, get_plugin):  # noqa: F811
     assert isinstance(invoice, dict) is True
     assert "payment_hash" in invoice
 
-    threading.Thread(
-        target=pay_with_thread, args=(l1, invoice["bolt11"])
-    ).start()
+    threading.Thread(target=pay_with_thread, args=(l1, invoice["bolt11"])).start()
 
     timeout = 10
     start_time = time.time()
@@ -374,8 +368,8 @@ def test_fc_hold_then_settle(node_factory, bitcoind, get_plugin):  # noqa: F811
     )
     assert doublecheck["status"] == "unpaid"
 
-    fc = l1.rpc.close(cl1, 1)
-    bitcoind.generate_block(1, wait_for_mempool=fc["txid"])
+    l1.rpc.close(cl1, 1)
+    bitcoind.generate_block(1, wait_for_mempool=1)
     wait_for(
         lambda: l1.rpc.listpeerchannels(l2.info["id"])["channels"][0]["state"]
         == "ONCHAIN"
@@ -427,24 +421,22 @@ def test_fc_hold_then_settle(node_factory, bitcoind, get_plugin):  # noqa: F811
     wait_for(
         lambda: any(
             "ONCHAIN:All outputs resolved" in status_str
-            for status_str in l1.rpc.listpeerchannels(l2.info["id"])[
-                "channels"
-            ][0]["status"]
+            for status_str in l1.rpc.listpeerchannels(l2.info["id"])["channels"][0][
+                "status"
+            ]
         )
     )
     wait_for(
         lambda: any(
             "ONCHAIN:All outputs resolved" in status_str
-            for status_str in l2.rpc.listpeerchannels(l1.info["id"])[
-                "channels"
-            ][0]["status"]
+            for status_str in l2.rpc.listpeerchannels(l1.info["id"])["channels"][0][
+                "status"
+            ]
         )
     )
 
     payres = only_one(
-        l1.rpc.call("listpays", {"payment_hash": invoice["payment_hash"]})[
-            "pays"
-        ]
+        l1.rpc.call("listpays", {"payment_hash": invoice["payment_hash"]})["pays"]
     )
     assert payres["status"] == "complete"
 
@@ -488,9 +480,7 @@ def test_valid_hold_then_cancel(node_factory, bitcoind, get_plugin):  # noqa: F8
     assert result_lookup["state"] == "OPEN"
     assert "htlc_expiry" not in result_lookup
 
-    threading.Thread(
-        target=pay_with_thread, args=(l1, invoice["bolt11"])
-    ).start()
+    threading.Thread(target=pay_with_thread, args=(l1, invoice["bolt11"])).start()
 
     timeout = 10
     start_time = time.time()
@@ -538,7 +528,7 @@ def test_valid_hold_then_cancel(node_factory, bitcoind, get_plugin):  # noqa: F8
     )
     assert result_settle_canceled is not None
     assert isinstance(result_settle_canceled, dict) is True
-    expected_message = "Holdinvoice is in wrong " "state: 'CANCELED'"
+    expected_message = "Holdinvoice is in wrong state: 'CANCELED'"
     result_settle_canceled["message"] == expected_message
 
 
@@ -581,9 +571,7 @@ def test_hold_then_block_timeout(node_factory, bitcoind, get_plugin):  # noqa: F
     assert result_lookup["state"] == "OPEN"
     assert "htlc_expiry" not in result_lookup
 
-    threading.Thread(
-        target=pay_with_thread, args=(l1, invoice["bolt11"])
-    ).start()
+    threading.Thread(target=pay_with_thread, args=(l1, invoice["bolt11"])).start()
 
     timeout = 10
     start_time = time.time()
@@ -672,9 +660,7 @@ def test_hold_then_invoice_timeout(node_factory, bitcoind, get_plugin):  # noqa:
     assert result_lookup["state"] == "OPEN"
     assert "htlc_expiry" not in result_lookup
 
-    threading.Thread(
-        target=pay_with_thread, args=(l1, invoice["bolt11"])
-    ).start()
+    threading.Thread(target=pay_with_thread, args=(l1, invoice["bolt11"])).start()
 
     timeout = 10
     start_time = time.time()

@@ -141,9 +141,7 @@ def test_inputs(node_factory, bitcoind, get_plugin):  # noqa: F811
         amount_msat=holdrpc.Amount(msat=800000),
         label=generate_random_label(),
     )
-    with pytest.raises(
-        _InactiveRpcError, match=r"missing required parameter: cltv"
-    ):
+    with pytest.raises(_InactiveRpcError, match=r"missing required parameter: cltv"):
         hold_stub.HoldInvoice(request)
 
     request = holdrpc.HoldInvoiceRequest(
@@ -158,7 +156,7 @@ def test_inputs(node_factory, bitcoind, get_plugin):  # noqa: F811
     assert isinstance(result, holdrpc.HoldInvoiceResponse) is True
     assert result.payment_hash is not None
 
-    decode_result = l2.rpc.decodepay(result.bolt11)
+    decode_result = l2.rpc.decode(result.bolt11)
     assert "routes" in decode_result
     assert len(decode_result["routes"]) == 1
     assert len(decode_result["routes"][0]) == 1
@@ -225,9 +223,7 @@ def test_valid_hold_then_settle(node_factory, bitcoind, get_plugin):  # noqa: F8
     assert (isinstance(result, holdrpc.HoldInvoiceResponse)) is True
     assert result.payment_hash is not None
 
-    request_lookup = holdrpc.HoldInvoiceLookupRequest(
-        payment_hash=result.payment_hash
-    )
+    request_lookup = holdrpc.HoldInvoiceLookupRequest(payment_hash=result.payment_hash)
     result_lookup = hold_stub.HoldInvoiceLookup(request_lookup)
     assert result_lookup is not None
     assert isinstance(result_lookup, holdrpc.HoldInvoiceLookupResponse) is True
@@ -237,9 +233,7 @@ def test_valid_hold_then_settle(node_factory, bitcoind, get_plugin):  # noqa: F8
     assert result_lookup.htlc_expiry == 0
 
     # test that it won't settle if it's still open
-    request_settle = holdrpc.HoldInvoiceSettleRequest(
-        payment_hash=result.payment_hash
-    )
+    request_settle = holdrpc.HoldInvoiceSettleRequest(payment_hash=result.payment_hash)
     with pytest.raises(
         _InactiveRpcError,
         match=r"Holdinvoice is in wrong state: \\\'OPEN\\\'\\",
@@ -257,9 +251,7 @@ def test_valid_hold_then_settle(node_factory, bitcoind, get_plugin):  # noqa: F8
         )
         result_lookup = hold_stub.HoldInvoiceLookup(request_lookup)
         assert result_lookup is not None
-        assert (
-            isinstance(result_lookup, holdrpc.HoldInvoiceLookupResponse) is True
-        )
+        assert isinstance(result_lookup, holdrpc.HoldInvoiceLookupResponse) is True
 
         if result_lookup.state == holdrpc.Holdstate.ACCEPTED:
             break
@@ -276,17 +268,13 @@ def test_valid_hold_then_settle(node_factory, bitcoind, get_plugin):  # noqa: F8
     ]
     assert doublecheck[0]["status"] == "unpaid"
 
-    request_settle = holdrpc.HoldInvoiceSettleRequest(
-        payment_hash=result.payment_hash
-    )
+    request_settle = holdrpc.HoldInvoiceSettleRequest(payment_hash=result.payment_hash)
     result_settle = hold_stub.HoldInvoiceSettle(request_settle)
     assert result_settle is not None
     assert isinstance(result_settle, holdrpc.HoldInvoiceSettleResponse) is True
     assert result_settle.state == holdrpc.Holdstate.SETTLED
 
-    request_lookup = holdrpc.HoldInvoiceLookupRequest(
-        payment_hash=result.payment_hash
-    )
+    request_lookup = holdrpc.HoldInvoiceLookupRequest(payment_hash=result.payment_hash)
     result_lookup = hold_stub.HoldInvoiceLookup(request_lookup)
     assert result_lookup is not None
     assert isinstance(result_lookup, holdrpc.HoldInvoiceLookupResponse) is True
@@ -371,9 +359,7 @@ def test_valid_hold_then_cancel(node_factory, bitcoind, get_plugin):  # noqa: F8
     assert (isinstance(result, holdrpc.HoldInvoiceResponse)) is True
     assert result.payment_hash is not None
 
-    request_lookup = holdrpc.HoldInvoiceLookupRequest(
-        payment_hash=result.payment_hash
-    )
+    request_lookup = holdrpc.HoldInvoiceLookupRequest(payment_hash=result.payment_hash)
     result_lookup = hold_stub.HoldInvoiceLookup(request_lookup)
     assert result_lookup is not None
     assert isinstance(result_lookup, holdrpc.HoldInvoiceLookupResponse) is True
@@ -383,9 +369,7 @@ def test_valid_hold_then_cancel(node_factory, bitcoind, get_plugin):  # noqa: F8
     assert result_lookup.htlc_expiry == 0
 
     # test that it won't settle if it's still open
-    request_settle = holdrpc.HoldInvoiceSettleRequest(
-        payment_hash=result.payment_hash
-    )
+    request_settle = holdrpc.HoldInvoiceSettleRequest(payment_hash=result.payment_hash)
     with pytest.raises(
         _InactiveRpcError,
         match=r"Holdinvoice is in wrong state: \\\'OPEN\\\'\\",
@@ -403,9 +387,7 @@ def test_valid_hold_then_cancel(node_factory, bitcoind, get_plugin):  # noqa: F8
         )
         result_lookup = hold_stub.HoldInvoiceLookup(request_lookup)
         assert result_lookup is not None
-        assert (
-            isinstance(result_lookup, holdrpc.HoldInvoiceLookupResponse) is True
-        )
+        assert isinstance(result_lookup, holdrpc.HoldInvoiceLookupResponse) is True
 
         if result_lookup.state == holdrpc.Holdstate.ACCEPTED:
             break
@@ -422,17 +404,13 @@ def test_valid_hold_then_cancel(node_factory, bitcoind, get_plugin):  # noqa: F8
     ]
     assert doublecheck[0]["status"] == "unpaid"
 
-    request_cancel = holdrpc.HoldInvoiceCancelRequest(
-        payment_hash=result.payment_hash
-    )
+    request_cancel = holdrpc.HoldInvoiceCancelRequest(payment_hash=result.payment_hash)
     result_cancel = hold_stub.HoldInvoiceCancel(request_cancel)
     assert result_cancel is not None
     assert isinstance(result_cancel, holdrpc.HoldInvoiceCancelResponse) is True
     assert result_cancel.state == holdrpc.Holdstate.CANCELED
 
-    request_lookup = holdrpc.HoldInvoiceLookupRequest(
-        payment_hash=result.payment_hash
-    )
+    request_lookup = holdrpc.HoldInvoiceLookupRequest(payment_hash=result.payment_hash)
     result_lookup = hold_stub.HoldInvoiceLookup(request_lookup)
     assert result_lookup is not None
     assert isinstance(result_lookup, holdrpc.HoldInvoiceLookupResponse) is True
