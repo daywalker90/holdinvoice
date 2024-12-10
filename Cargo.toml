@@ -1,7 +1,7 @@
 [package]
 edition = "2021"
 name = "holdinvoice"
-version = "3.1.0"
+version = "3.1.1"
 
 [dependencies]
 anyhow = "1.0"
@@ -13,13 +13,13 @@ parking_lot = "0.12"
 # rand = "0.8"
 rcgen = { version = "0.13", features = ["pem", "x509-parser"] }
 
-cln-rpc = "0.2"
-# cln-rpc = { path="../lightning/cln-rpc/", version = "^0.1" }
-cln-plugin = "0.2"
-# cln-plugin = { path="../lightning/plugins/", version = "^0.1" }
+cln-rpc = "0.3"
+# cln-rpc = { path="../lightning/cln-rpc/", version = "^0.2" }
+cln-plugin = "0.3"
+# cln-plugin = { path="../lightning/plugins/", version = "^0.2" }
 
 hex = "0.4"
-bitcoin = { version = "0.30", features = [ "serde" ] }
+bitcoin = { version = "0.31", features = [ "serde" ] }
 
 [dependencies.tokio]
 features = ["fs","net", "rt-multi-thread"]

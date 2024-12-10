@@ -1,5 +1,11 @@
 # Changelog
 
+## [3.1.1] - 2024-12-10
+
+### Changed
+
+- upgrade dependencies
+
 ## [3.1.0] - 2024-09-23
 
 ### Added
