@@ -10,6 +10,7 @@ use log::{debug, info, warn};
 use model::PluginState;
 use parking_lot::Mutex;
 use std::collections::BTreeMap;
+use std::error::Error;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -48,21 +49,10 @@ const OPT_CANCEL_HOLD_BEFORE_INVOICE_EXPIRY_SECONDS: DefaultIntegerConfigOption 
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), anyhow::Error> {
-    debug!("Starting grpc plugin");
     std::env::set_var(
         "CLN_PLUGIN_LOG",
         "cln_plugin=info,cln_rpc=info,cln_grpc=info,holdinvoice=debug,warn",
     );
-
-    let directory = std::env::current_dir()?;
-    let (identity, ca_cert) = tls::init(&directory)?;
-
-    let state = PluginState {
-        blockheight: Arc::new(Mutex::new(u32::default())),
-        holdinvoices: Arc::new(tokio::sync::Mutex::new(BTreeMap::new())),
-        identity,
-        ca_cert,
-    };
 
     let plugin = match Builder::new(tokio::io::stdin(), tokio::io::stdout())
         .option(OPT_GRPC_HOLD_PORT)
@@ -96,8 +86,11 @@ async fn main() -> Result<(), anyhow::Error> {
         Some(p) => {
             info!("verifying config options");
             match config::verify_config_options(&p) {
-                Ok(()) => {}
-                Err(e) => return Err(e),
+                Ok(()) => (),
+                Err(e) => {
+                    log_error(e.to_string());
+                    return Err(e);
+                }
             };
             p
         }
@@ -113,6 +106,15 @@ async fn main() -> Result<(), anyhow::Error> {
             None
         }
     };
+
+    let state = match init_plugin_state() {
+        Ok(s) => s,
+        Err(e) => {
+            log_error(e.to_string());
+            return Err(e);
+        }
+    };
+
     let confplugin;
     match plugin.start(state.clone()).await {
         Ok(p) => {
@@ -135,13 +137,28 @@ async fn main() -> Result<(), anyhow::Error> {
     if let Some(port) = bind_port {
         let bind_addr: SocketAddr = format!("0.0.0.0:{}", port).parse()?;
         let rpc_path = make_rpc_path(confplugin.clone());
-        tokio::spawn(run_interface(bind_addr, rpc_path, confplugin.clone()));
+        let grpc_plugin_clone = confplugin.clone();
+        tokio::spawn(async move {
+            match run_interface(bind_addr, rpc_path, grpc_plugin_clone).await {
+                Ok(_) => log::info!("grpc interface stopped"),
+                Err(e) => log::warn!("{}", e.to_string()),
+            }
+        });
     }
 
-    confplugin.join().await.unwrap_or_else(|e| {
-        warn!("Error joining holdinvoice plugin: {}", e);
-    });
-    Ok(())
+    confplugin.join().await
+}
+
+fn init_plugin_state() -> Result<PluginState, anyhow::Error> {
+    let directory = std::env::current_dir()?;
+    let (identity, ca_cert) = tls::init(&directory)?;
+
+    Ok(PluginState {
+        blockheight: Arc::new(Mutex::new(u32::default())),
+        holdinvoices: Arc::new(tokio::sync::Mutex::new(BTreeMap::new())),
+        identity,
+        ca_cert,
+    })
 }
 
 async fn run_interface(
@@ -171,7 +188,16 @@ async fn run_interface(
         rpc_path, &bind_addr
     );
 
-    server.await.context("serving requests")?;
+    server
+        .await
+        .map_err(|e| anyhow!("Error serving grpc: {} {:?}", e.to_string(), e.source()))
+}
 
-    Ok(())
+fn log_error(error: String) {
+    println!(
+        "{}",
+        serde_json::json!({"jsonrpc": "2.0",
+                          "method": "log",
+                          "params": {"level":"warn", "message":error}})
+    );
 }
