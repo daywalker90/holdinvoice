@@ -76,7 +76,7 @@ pub struct HoldHtlc {
     pub loop_mutex: Arc<tokio::sync::Mutex<bool>>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct HtlcIdentifier {
     pub scid: ShortChannelId,
     pub htlc_id: u64,

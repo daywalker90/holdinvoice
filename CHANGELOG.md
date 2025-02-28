@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.0.0] - Unreleased
+
+### Changed
+
+- differentiate between "soft" and "hard" expire. Previously holdinvoice would cancel htlc's even if it was still possible to settle
+
+
 ## [3.1.1] - 2024-12-10
 
 ### Changed
