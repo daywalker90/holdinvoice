@@ -123,3 +123,19 @@ fn generate_or_load_identity(
     let certificate = std::fs::read(cert_path)?;
     Ok(Identity { certificate, key })
 }
+
+pub fn do_certificates_exist(cert_dir: &Path) -> bool {
+    let required_files = [
+        "server.pem",
+        "server-key.pem",
+        "client.pem",
+        "client-key.pem",
+        "ca.pem",
+        "ca-key.pem",
+    ];
+
+    required_files.iter().all(|file| {
+        let path = cert_dir.join(file);
+        path.exists() && path.metadata().map(|m| m.len() > 0).unwrap_or(false)
+    })
+}

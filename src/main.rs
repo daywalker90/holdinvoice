@@ -14,6 +14,9 @@ use std::error::Error;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
+use tls::do_certificates_exist;
+use tokio::time;
 
 use crate::hold::{hold_invoice, hold_invoice_cancel, hold_invoice_lookup, hold_invoice_settle};
 
@@ -107,7 +110,7 @@ async fn main() -> Result<(), anyhow::Error> {
         }
     };
 
-    let state = match init_plugin_state() {
+    let state = match init_plugin_state().await {
         Ok(s) => s,
         Err(e) => {
             log_error(e.to_string());
@@ -149,8 +152,16 @@ async fn main() -> Result<(), anyhow::Error> {
     confplugin.join().await
 }
 
-fn init_plugin_state() -> Result<PluginState, anyhow::Error> {
+async fn init_plugin_state() -> Result<PluginState, anyhow::Error> {
     let directory = std::env::current_dir()?;
+    let max_retries = 10;
+    let mut retries = 0;
+    while retries < max_retries && !do_certificates_exist(&directory) {
+        log::debug!("Certificates incomplete. Retrying...");
+        time::sleep(Duration::from_millis(500)).await;
+        retries += 1;
+    }
+
     let (identity, ca_cert) = tls::init(&directory)?;
 
     Ok(PluginState {
