@@ -5,8 +5,9 @@ use cln_plugin::Plugin;
 use cln_rpc::{
     model::{
         requests::{ListinvoicesRequest, ListpeerchannelsRequest},
-        responses::{ListinvoicesInvoicesStatus, ListpeerchannelsChannelsState},
+        responses::ListinvoicesInvoicesStatus,
     },
+    primitives::ChannelState,
     ClnRpc, Request, Response,
 };
 use log::{debug, warn};
@@ -266,8 +267,8 @@ pub async fn hold_invoice_lookup(
 
                 for chan in channels {
                     if !chan.peer_connected
-                        || chan.state != ListpeerchannelsChannelsState::CHANNELD_NORMAL
-                            && chan.state != ListpeerchannelsChannelsState::CHANNELD_AWAITING_SPLICE
+                        || chan.state != ChannelState::CHANNELD_NORMAL
+                            && chan.state != ChannelState::CHANNELD_AWAITING_SPLICE
                     {
                         continue;
                     }
