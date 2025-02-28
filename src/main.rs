@@ -121,7 +121,6 @@ async fn main() -> Result<(), anyhow::Error> {
     let confplugin;
     match plugin.start(state.clone()).await {
         Ok(p) => {
-            info!("starting lookup_state task");
             confplugin = p;
             let cleanupclone = confplugin.clone();
             tokio::spawn(async move {

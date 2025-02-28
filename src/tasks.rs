@@ -9,11 +9,11 @@ use log::info;
 use tokio::time::{self, Instant};
 
 use crate::model::PluginState;
-use crate::rpc::{del_datastore_htlc_expiry, del_datastore_state, listdatastore_all};
+use crate::rpc::{del_datastore_state, listdatastore_all};
 use crate::util::make_rpc_path;
 
 pub async fn autoclean_holdinvoice_db(plugin: Plugin<PluginState>) -> Result<(), Error> {
-    time::sleep(Duration::from_secs(60)).await;
+    time::sleep(Duration::from_secs(120)).await;
     info!("Starting autoclean_holdinvoice_db");
 
     let rpc_path = make_rpc_path(plugin.clone());
@@ -43,8 +43,7 @@ pub async fn autoclean_holdinvoice_db(plugin: Plugin<PluginState>) -> Result<(),
             let datastore = listdatastore_all(&mut rpc).await?.datastore;
             for data in datastore {
                 if !payment_hashes.contains(&data.key[1]) {
-                    let _res = del_datastore_htlc_expiry(&mut rpc, data.key[1].clone()).await;
-                    let _res2 = del_datastore_state(&mut rpc, data.key[1].clone()).await;
+                    let _res = del_datastore_state(&mut rpc, data.key[1].clone()).await;
                     count += 1;
                 }
             }

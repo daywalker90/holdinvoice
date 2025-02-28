@@ -17,10 +17,7 @@ use tokio::{time, time::Instant};
 use crate::{
     errors::*,
     model::{HoldLookupResponse, HoldStateResponse, PluginState},
-    rpc::{
-        datastore_new_state, datastore_update_state_forced, listdatastore_htlc_expiry,
-        listdatastore_state,
-    },
+    rpc::{datastore_new_state, datastore_update_state_forced, listdatastore_state},
     util::{build_invoice_request, make_rpc_path, parse_payment_hash},
     Holdstate,
 };
@@ -118,7 +115,7 @@ pub async fn hold_invoice_settle(
         match result {
             Ok(_r) => {
                 let mut holdinvoices = plugin.state().holdinvoices.lock().await;
-                if let Some(invoice) = holdinvoices.get_mut(&pay_hash.to_string()) {
+                if let Some(invoice) = holdinvoices.get_mut(&pay_hash) {
                     for (_, htlc) in invoice.htlc_data.iter_mut() {
                         *htlc.loop_mutex.lock().await = true;
                     }
@@ -254,7 +251,17 @@ pub async fn hold_invoice_lookup(
             }
         }
         Holdstate::Accepted => {
-            htlc_expiry = Some(listdatastore_htlc_expiry(&mut rpc, pay_hash.clone()).await?)
+            let holdinvoices = plugin.state().holdinvoices.lock().await;
+            let next_expiry = if let Some(h) = holdinvoices.get(&pay_hash) {
+                h.htlc_data
+                    .values()
+                    .map(|htlc| htlc.cltv_expiry)
+                    .min()
+                    .unwrap()
+            } else {
+                return Ok(payment_hash_missing_error(&pay_hash));
+            };
+            htlc_expiry = Some(next_expiry)
         }
         Holdstate::Canceled => {
             let now = Instant::now();

@@ -96,7 +96,7 @@ fn generate_or_load_identity(
         );
 
         // Configure the certificate we want.
-        let subject_alt_names = vec!["cln".to_string(), "localhost".to_string()];
+        let subject_alt_names = vec!["cln".to_owned(), "localhost".to_owned()];
         let mut params = rcgen::CertificateParams::new(subject_alt_names)?;
         if parent.is_none() {
             params.is_ca = rcgen::IsCa::Ca(rcgen::BasicConstraints::Unconstrained);

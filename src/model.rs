@@ -18,7 +18,6 @@ use std::str::FromStr;
 
 pub const HOLD_INVOICE_PLUGIN_NAME: &str = "holdinvoice";
 pub const HOLD_INVOICE_DATASTORE_STATE: &str = "state";
-pub const HOLD_INVOICE_DATASTORE_HTLC_EXPIRY: &str = "expiry";
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
@@ -87,7 +86,6 @@ pub struct HoldInvoice {
     pub hold_state: Holdstate,
     pub generation: u64,
     pub htlc_data: HashMap<HtlcIdentifier, HoldHtlc>,
-    pub last_htlc_expiry: u32,
     pub invoice: ListinvoicesInvoices,
 }
 

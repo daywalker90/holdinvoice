@@ -5,6 +5,7 @@
 ### Changed
 
 - differentiate between "soft" and "hard" expire. Previously holdinvoice would cancel htlc's even if it was still possible to settle
+- less usage of cln's datastore by not storing expiry value for ACCEPTED state and instead read it from plugin state
 
 
 ## [3.1.1] - 2024-12-10

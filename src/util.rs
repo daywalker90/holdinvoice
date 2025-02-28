@@ -101,7 +101,7 @@ pub fn build_invoice_request(
     let label = if let Some(lbl) = args.get("label") {
         match lbl {
             serde_json::Value::Number(n) => n.to_string(),
-            serde_json::Value::String(s) => s.as_str().to_string(),
+            serde_json::Value::String(s) => s.as_str().to_owned(),
             e => return Err(invalid_input_error(&e.to_string())),
         }
     } else {
@@ -111,7 +111,7 @@ pub fn build_invoice_request(
     let description = if let Some(desc) = args.get("description") {
         match desc {
             serde_json::Value::Number(n) => n.to_string(),
-            serde_json::Value::String(s) => s.as_str().to_string(),
+            serde_json::Value::String(s) => s.as_str().to_owned(),
             e => return Err(invalid_input_error(&e.to_string())),
         }
     } else {
@@ -163,7 +163,7 @@ pub fn build_invoice_request(
             if preimg_str.len() != 64 {
                 return Err(invalid_hash_error("preimage", &preimg.to_string()));
             } else {
-                preimg_str.to_string()
+                preimg_str.to_owned()
             }
         } else {
             return Err(invalid_hash_error("preimage", &preimg.to_string()));

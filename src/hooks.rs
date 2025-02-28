@@ -18,12 +18,12 @@ use serde_json::json;
 use tokio::time::{self};
 
 use crate::util::{cleanup_pluginstate_holdinvoices, make_rpc_path};
+use crate::Holdstate;
 use crate::{
     model::{HoldHtlc, HoldInvoice, HtlcIdentifier, PluginState},
     rpc::{datastore_update_state, listdatastore_state},
     OPT_CANCEL_HOLD_BEFORE_HTLC_EXPIRY_BLOCKS, OPT_CANCEL_HOLD_BEFORE_INVOICE_EXPIRY_SECONDS,
 };
-use crate::{rpc::datastore_htlc_expiry, Holdstate};
 
 const WIRE_INCORRECT_OR_UNKNOWN_PAYMENT_DETAILS: &str = "400F";
 
@@ -136,13 +136,6 @@ pub async fn htlc_handler(
         };
 
         if is_new_invoice {
-            datastore_htlc_expiry(
-                &mut rpc,
-                htlc_hook.htlc.payment_hash.clone(),
-                htlc_hook.htlc.cltv_expiry.to_string(),
-            )
-            .await?;
-
             let mut htlc_data = HashMap::new();
             htlc_data.insert(
                 global_htlc_ident,
@@ -158,7 +151,6 @@ pub async fn htlc_handler(
                     hold_state,
                     generation,
                     htlc_data,
-                    last_htlc_expiry: htlc_hook.htlc.cltv_expiry,
                     invoice: invoice.clone(),
                 },
             );
@@ -172,23 +164,6 @@ pub async fn htlc_handler(
                     loop_mutex: Arc::new(tokio::sync::Mutex::new(true)),
                 },
             );
-
-            let earliest_htlc_expiry = holdinvoice
-                .htlc_data
-                .values()
-                .map(|htlc| htlc.cltv_expiry)
-                .min()
-                .unwrap();
-
-            if holdinvoice.last_htlc_expiry != earliest_htlc_expiry {
-                datastore_htlc_expiry(
-                    &mut rpc,
-                    htlc_hook.htlc.payment_hash.clone(),
-                    earliest_htlc_expiry.to_string(),
-                )
-                .await?;
-                holdinvoice.last_htlc_expiry = earliest_htlc_expiry;
-            }
         }
     }
 
