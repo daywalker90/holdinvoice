@@ -8,7 +8,7 @@ use cln_rpc::{
         responses::ListinvoicesInvoicesStatus,
     },
     primitives::ChannelState,
-    ClnRpc, Request, Response,
+    ClnRpc,
 };
 use log::{debug, warn};
 use serde_json::json;
@@ -66,30 +66,28 @@ pub async fn hold_invoice(
         Err(e) => return Ok(e),
     };
 
-    let invoice_request = match rpc.call(Request::Invoice(inv_req)).await {
-        Ok(resp) => resp,
-        Err(e) => match e.code {
-            Some(_) => return Ok(json!(e)),
-            None => return Err(anyhow!("Unexpected response in invoice: {}", e.to_string())),
-        },
-    };
-    let result = match invoice_request {
-        Response::Invoice(info) => info,
-        e => return Err(anyhow!("Unexpected result in invoice: {:?}", e)),
-    };
+    let invoice = rpc.call_typed(&inv_req).await?;
+
     datastore_new_state(
         &mut rpc,
-        result.payment_hash.to_string(),
+        invoice.payment_hash.to_string(),
         Holdstate::Open.to_string(),
     )
     .await?;
-    Ok(json!(result))
+    Ok(json!(invoice))
 }
 
 pub async fn hold_invoice_settle(
     plugin: Plugin<PluginState>,
     args: serde_json::Value,
 ) -> Result<serde_json::Value, Error> {
+    loop {
+        if *plugin.state().startup_lock.lock() {
+            time::sleep(Duration::from_secs(1)).await;
+        } else {
+            break;
+        }
+    }
     let rpc_path = make_rpc_path(plugin.clone());
     let mut rpc = ClnRpc::new(&rpc_path).await?;
 
@@ -154,6 +152,13 @@ pub async fn hold_invoice_cancel(
     plugin: Plugin<PluginState>,
     args: serde_json::Value,
 ) -> Result<serde_json::Value, Error> {
+    loop {
+        if *plugin.state().startup_lock.lock() {
+            time::sleep(Duration::from_secs(1)).await;
+        } else {
+            break;
+        }
+    }
     let rpc_path = make_rpc_path(plugin.clone());
     let mut rpc = ClnRpc::new(&rpc_path).await?;
 
@@ -203,6 +208,13 @@ pub async fn hold_invoice_lookup(
     plugin: Plugin<PluginState>,
     args: serde_json::Value,
 ) -> Result<serde_json::Value, Error> {
+    loop {
+        if *plugin.state().startup_lock.lock() {
+            time::sleep(Duration::from_secs(1)).await;
+        } else {
+            break;
+        }
+    }
     let rpc_path = make_rpc_path(plugin.clone());
     let mut rpc = ClnRpc::new(&rpc_path).await?;
 

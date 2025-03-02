@@ -10,6 +10,7 @@ use cln_plugin::Error;
 use cln_rpc::{
     model::responses::ListinvoicesInvoices,
     primitives::{Secret, ShortChannelId},
+    ClnRpc,
 };
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
@@ -18,6 +19,7 @@ use std::str::FromStr;
 
 pub const HOLD_INVOICE_PLUGIN_NAME: &str = "holdinvoice";
 pub const HOLD_INVOICE_DATASTORE_STATE: &str = "state";
+pub const HOLD_STARTUP_LOCK: u64 = 10;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
@@ -89,12 +91,14 @@ pub struct HoldInvoice {
     pub invoice: ListinvoicesInvoices,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct PluginState {
     pub blockheight: Arc<Mutex<u32>>,
     pub holdinvoices: Arc<tokio::sync::Mutex<BTreeMap<String, HoldInvoice>>>,
     pub identity: Identity,
     pub ca_cert: Vec<u8>,
+    pub startup_lock: Arc<Mutex<bool>>,
+    pub rpc: Arc<tokio::sync::Mutex<ClnRpc>>,
 }
 
 fn is_none_or_empty<T>(f: &Option<Vec<T>>) -> bool

@@ -10,14 +10,13 @@ use cln_plugin::Plugin;
 use cln_rpc::{
     model::{requests::ListinvoicesRequest, responses::ListinvoicesInvoices},
     primitives::{Amount, ShortChannelId},
-    ClnRpc,
 };
 use log::{debug, info, warn};
 use serde::Deserialize;
 use serde_json::json;
 use tokio::time::{self};
 
-use crate::util::{cleanup_pluginstate_holdinvoices, make_rpc_path};
+use crate::util::cleanup_pluginstate_holdinvoices;
 use crate::Holdstate;
 use crate::{
     model::{HoldHtlc, HoldInvoice, HtlcIdentifier, PluginState},
@@ -63,8 +62,10 @@ pub async fn htlc_handler(
         "payment_hash: `{}`. htlc_hook started!",
         htlc_hook.htlc.payment_hash
     );
-    let rpc_path = make_rpc_path(plugin.clone());
-    let mut rpc = ClnRpc::new(&rpc_path).await?;
+    // let rpc_path = make_rpc_path(plugin.clone());
+    // let mut rpc = ClnRpc::new(&rpc_path)
+    //     .await
+    //     .context("rpc connection full")?;
 
     let is_new_invoice;
 
@@ -91,6 +92,7 @@ pub async fn htlc_handler(
                 "payment_hash: `{}`. New htlc, checking if it's our invoice...",
                 htlc_hook.htlc.payment_hash
             );
+            let mut rpc = plugin.state().rpc.lock().await;
 
             match listdatastore_state(&mut rpc, htlc_hook.htlc.payment_hash.clone()).await {
                 Ok(dbstate) => {
@@ -200,7 +202,6 @@ pub async fn htlc_handler(
 
     return loop_htlc_hold(
         plugin.clone(),
-        &mut rpc,
         &htlc_hook.htlc.payment_hash,
         global_htlc_ident,
         invoice,
@@ -212,7 +213,7 @@ pub async fn htlc_handler(
 
 async fn loop_htlc_hold(
     plugin: Plugin<PluginState>,
-    rpc: &mut ClnRpc,
+    // rpc: &mut ClnRpc,
     payment_hash: &str,
     global_htlc_ident: HtlcIdentifier,
     invoice: ListinvoicesInvoices,
@@ -245,6 +246,7 @@ async fn loop_htlc_hold(
                 payment_hash
             ));
         };
+        let mut rpc = plugin.state().rpc.lock().await;
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -261,7 +263,7 @@ async fn loop_htlc_hold(
             .clone()
             || invoice.expires_at <= now + cancel_hold_before_invoice_expiry_seconds
         {
-            match listdatastore_state(rpc, payment_hash.to_owned()).await {
+            match listdatastore_state(&mut rpc, payment_hash.to_owned()).await {
                 Ok(s) => {
                     holdinvoice_data.hold_state = Holdstate::from_str(&s.string.unwrap())?;
                     holdinvoice_data.generation = s.generation.unwrap_or(0);
@@ -284,7 +286,7 @@ async fn loop_htlc_hold(
             let hard_expired = cltv_expiry <= blockheight || invoice.expires_at <= now;
             if soft_expired && holdinvoice_data.hold_state == Holdstate::Accepted && !hard_expired {
                 match datastore_update_state(
-                    rpc,
+                    &mut rpc,
                     payment_hash.to_owned(),
                     Holdstate::Settled.to_string(),
                     holdinvoice_data.generation,
@@ -312,7 +314,7 @@ async fn loop_htlc_hold(
                 || hard_expired
             {
                 match datastore_update_state(
-                    rpc,
+                    &mut rpc,
                     payment_hash.to_owned(),
                     Holdstate::Canceled.to_string(),
                     holdinvoice_data.generation,
@@ -351,7 +353,7 @@ async fn loop_htlc_hold(
                             .is_valid_transition(&Holdstate::Accepted)
                     {
                         match datastore_update_state(
-                            rpc,
+                            &mut rpc,
                             payment_hash.to_owned(),
                             Holdstate::Accepted.to_string(),
                             holdinvoice_data.generation,
@@ -398,7 +400,7 @@ async fn loop_htlc_hold(
                             .sum()
                     {
                         match datastore_update_state(
-                            rpc,
+                            &mut rpc,
                             payment_hash.to_owned(),
                             Holdstate::Open.to_string(),
                             holdinvoice_data.generation,

@@ -4,15 +4,16 @@ use crate::pb::hold_server::HoldServer;
 use crate::util::make_rpc_path;
 use anyhow::{anyhow, Context, Result};
 use cln_plugin::options::{ConfigOption, DefaultIntegerConfigOption, IntegerConfigOption};
-use cln_plugin::Builder;
 use cln_plugin::Plugin;
+use cln_plugin::{Builder, ConfiguredPlugin};
+use cln_rpc::ClnRpc;
 use log::{debug, info, warn};
-use model::PluginState;
+use model::{PluginState, HOLD_STARTUP_LOCK};
 use parking_lot::Mutex;
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use tls::do_certificates_exist;
@@ -110,7 +111,7 @@ async fn main() -> Result<(), anyhow::Error> {
         }
     };
 
-    let state = match init_plugin_state().await {
+    let state = match init_plugin_state(&plugin).await {
         Ok(s) => s,
         Err(e) => {
             log_error(e.to_string());
@@ -148,10 +149,15 @@ async fn main() -> Result<(), anyhow::Error> {
         });
     }
 
+    time::sleep(Duration::from_secs(HOLD_STARTUP_LOCK)).await;
+    *confplugin.state().startup_lock.lock() = false;
+
     confplugin.join().await
 }
 
-async fn init_plugin_state() -> Result<PluginState, anyhow::Error> {
+async fn init_plugin_state(
+    plugin: &ConfiguredPlugin<PluginState, tokio::io::Stdin, tokio::io::Stdout>,
+) -> Result<PluginState, anyhow::Error> {
     let directory = std::env::current_dir()?;
     let max_retries = 10;
     let mut retries = 0;
@@ -163,11 +169,17 @@ async fn init_plugin_state() -> Result<PluginState, anyhow::Error> {
 
     let (identity, ca_cert) = tls::init(&directory)?;
 
+    let rpc_path =
+        Path::new(&plugin.configuration().lightning_dir).join(plugin.configuration().rpc_file);
+    let rpc = ClnRpc::new(&rpc_path).await?;
+
     Ok(PluginState {
         blockheight: Arc::new(Mutex::new(u32::default())),
         holdinvoices: Arc::new(tokio::sync::Mutex::new(BTreeMap::new())),
         identity,
         ca_cert,
+        startup_lock: Arc::new(Mutex::new(true)),
+        rpc: Arc::new(tokio::sync::Mutex::new(rpc)),
     })
 }
 
