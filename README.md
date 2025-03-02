@@ -78,9 +78,7 @@ There are four methods provided by this plugin:
         * SETTLED (invoice paid)
         * CANCELED (invoice unpaid and will not accept any further HTLC's even if not yet expired)
 
-The plugin will automatically cancel any invoice if *it* is either close to expiry (this is one major difference to the way lnd does it because cln can't settle with an expired invoice) or if a pending HTLC is close to expiry and would otherwise cause a force close of the channel. You can configure when this happens with the options below.
-
-During a node restart invoices that were previously in the ACCEPTED state can temporarily be back in the OPEN state, because the HTLC's get replayed to the plugin during startup.
+The plugin will automatically settle any holdinvoice if it is either close to expiry (this is one major difference to the way lnd does it because cln can't settle with an expired invoice) or if a pending HTLC is close to expiry and would otherwise cause a force close of the channel. You can configure when this happens with the options below. If for some reason the plugin was not able to settle a holdinvoice in time (e.g. your node was down) the plugin must CANCEL the holdinvoice! 
 
 # Options
 You can set the following options in your cln config file:
