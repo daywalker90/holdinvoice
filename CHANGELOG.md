@@ -6,6 +6,11 @@
 
 - differentiate between "soft" and "hard" expire. Previously holdinvoice would cancel htlc's even if it was still possible to settle
 - less usage of cln's datastore by not storing expiry value for ACCEPTED state and instead read it from plugin state
+- after plugin start wait for 10s before processing rpc commands to give the plugin a chance to process htlc's during a node restart
+
+### Fixed
+
+- use a constant amount of rpc connections instead of a proportional amount to the number of HTLC's held, fixes os error 11 crash when holding more htlc's than the network connections limit
 
 
 ## [3.1.1] - 2024-12-10
