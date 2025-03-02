@@ -34,10 +34,18 @@ def generate_random_number():
     return random.randint(1, 20_000_000_000_000_00_000)
 
 
-def pay_with_thread(rpc, bolt11):
+def pay_with_thread(node, bolt11, partial_msat):
     LOGGER = logging.getLogger(__name__)
     try:
-        rpc.dev_pay(bolt11, dev_use_shadow=False, retry_for=10)
+        node.rpc.call(
+            "pay",
+            {
+                "bolt11": bolt11,
+                "dev_use_shadow": False,
+                "retry_for": 20,
+                "partial_msat": partial_msat,
+            },
+        )
     except Exception as e:
         LOGGER.info(f"holdinvoice: Error paying payment hash:{e}")
         pass
