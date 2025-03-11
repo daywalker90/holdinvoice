@@ -4,7 +4,8 @@ import secrets
 import threading
 import time
 
-from pyln.client import Millisatoshi
+import pytest
+from pyln.client import Millisatoshi, RpcError
 from pyln.testing.fixtures import *  # noqa: F403
 from pyln.testing.utils import only_one, sync_blockheight, wait_for
 from util import (
@@ -130,19 +131,16 @@ def test_inputs(node_factory, get_plugin):  # noqa: F811
     assert result["message"] == expected_message
 
     # 0 amount_msat
-    result = node.rpc.call(
-        "holdinvoice",
-        {
-            "amount_msat": 0,
-            "description": "Invalid amount 0",
-            "label": generate_random_label(),
-            "cltv": 144,
-        },
-    )
-    assert result is not None
-    assert isinstance(result, dict) is True
-    expected_message = "should be positive msat or 'any': invalid token '\"0msat\"'"
-    assert expected_message in result["message"]
+    with pytest.raises(RpcError, match=r"amount_msat: should be positive msat or"):
+        node.rpc.call(
+            "holdinvoice",
+            {
+                "amount_msat": 0,
+                "description": "Invalid amount 0",
+                "label": generate_random_label(),
+                "cltv": 144,
+            },
+        )
 
     # Negative expiry value
     result = node.rpc.call(
