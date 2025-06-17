@@ -67,7 +67,7 @@ can be found on the [release](https://github.com/daywalker90/holdinvoice/release
 
 They require ``glibc>=2.31``, which you can check with ``ldd --version``.
 
-In your cln config you must add:
+In your CLN config you must add:
 
 ```
 important-plugin=<path/to/holdinvoice>
@@ -108,27 +108,31 @@ After that the binary will be here: ``target/release/holdinvoice``
 Note: Release binaries are built using ``cross`` and the ``optimized`` profile.
 
 # Documentation
-There are four methods provided by this plugin:
-* ``holdinvoice``: amount_msat label description [expiry]
-[fallbacks] [preimage] cltv [deschashonly] 
-    * create an invoice where the HTLC's will be held by the plugin, it has almost the same options as cln's invoice, but cltv is required
-* ``holdinvoicesettle``: payment_hash 
-    * order plugin to settle a holdinvoice with enough HTLC's being held, does not wait for actual setllement of HTLC's
-* ``holdinvoicecancel``: payment_hash
-    * order plugin to cancel a holdinvoice and return any pending HTLC's back, does not wait for actual return of HTLC's
-* ``holdinvoicelookup``: payment_hash
-    * look up the holdstate of a holdinvoice and if it's in the ACCEPTED holdstate return the ``htlc_expiry``
-    * waits for actual settlement or return of HTLC's (with a timeout) and doublechecks holdstate with invoice state
-    * valid holdstates are:
-        * OPEN (no or not enough HTLC's pending)
-        * ACCEPTED (enough HTLC's to fulfill the invoice pending)
-        * SETTLED (invoice paid)
-        * CANCELED (invoice unpaid and will not accept any further HTLC's even if not yet expired)
+These are the rpc/grpc methods provided by this plugin, for details check the ``hold.proto`` file in ``proto``:
+* **holdinvoice**: *amount_msat* *description* [*expiry*] [*payment_hash*] [*preimage*] [*cltv*] [*deschashonly*] [*exposeprivatechannels*]
+    * Create an invoice where the HTLC's will be held by the plugin.
+    * It has almost the same options as CLN's ``invoice`` command. If `cltv` is not specified the default is `144` and not ``cltv-final`.
+    * You can provide no `payment_hash`/`preimage` (a pair will be generated for you), both (a check if they match will be performed) or one of them, but if you just provide the `payment_hash` you must provide the `preimage` later when you want to settle the holdinvoice.
+* **holdinvoicesettle**: *payment_hash* or *preimage*
+    * Must be used with ``-k`` on the CLI to specify which argument you are passing.
+    * Order the plugin to settle a holdinvoice with enough HTLC's being held. If you created the holdinvoice with just a `payment_hash` you must now provide the `preimage` here, otherwise you can use either.
+    * Waits up to 30 seconds for HTLC's to actually settle, returns an error on timeout
+* **holdinvoicecancel**: *payment_hash*
+    * Order the plugin to cancel a holdinvoice and return any pending HTLC's back.
+    * Waits up to 30 seconds for HTLC's to actually cancel, returns an error on timeout
+* **holdinvoicelookup**: [*payment_hash*]
+    * Look up all holdinvoices or just the one with the provided `payment_hash`
+    * ``state`` field can be:
+        * ``OPEN`` (no or not enough HTLC's pending)
+        * ``ACCEPTED`` (enough HTLC's to fulfill the invoice pending)
+        * ``SETTLED`` (invoice paid)
+        * ``CANCELED`` (invoice unpaid and will not accept any further HTLC's even if not yet expired)
+* **holdinvoice-version**:
+    * Returns an object containing `version` with the version of the plugin
 
-The plugin will automatically settle any holdinvoice if it is either close to expiry (this is one major difference to the way lnd does it because cln can't settle with an expired invoice) or if a pending HTLC is close to expiry and would otherwise cause a force close of the channel. You can configure when this happens with the options below. If for some reason the plugin was not able to settle a holdinvoice in time (e.g. your node was down) the plugin must CANCEL the holdinvoice! 
+The plugin will automatically settle any holdinvoice if a pending HTLC is close to expiry and would otherwise cause a force close of the channel. This is of course only possible if the plugin already knows the preimage, otherwise it will cancel at this point. You can configure when the block expiry happens with the option below. If for some reason the plugin was not able to settle a holdinvoice in time (e.g. your node was down) the plugin will CANCEL the holdinvoice! 
 
 # Options
-You can set the following options in your cln config file:
+You can set the following option(s) in your CLN config file:
 
 * ``holdinvoice-cancel-before-htlc-expiry``: number of blocks before HTLC's expiry where the plugin auto-cancels invoice and HTLC's, Default: ``6``
-* ``holdinvoice-cancel-before-invoice-expiry``: number of seconds before invoice expiry where the plugin auto cancels any pending HTLC's and no longer accepts new HTLC's, Default: ``1800``

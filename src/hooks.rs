@@ -7,22 +7,19 @@ use std::{
 
 use anyhow::{anyhow, Error};
 use cln_plugin::Plugin;
-use cln_rpc::{
-    model::{requests::ListinvoicesRequest, responses::ListinvoicesInvoices},
-    primitives::{Amount, ShortChannelId},
-};
-use log::{debug, info, warn};
+use cln_rpc::primitives::ShortChannelId;
+use lightning_invoice::Bolt11Invoice;
 use serde::Deserialize;
 use serde_json::json;
 use tokio::time::{self};
 
-use crate::util::cleanup_pluginstate_holdinvoices;
 use crate::Holdstate;
 use crate::{
-    model::{HoldHtlc, HoldInvoice, HtlcIdentifier, PluginState},
-    rpc::{datastore_update_state, listdatastore_state},
-    OPT_CANCEL_HOLD_BEFORE_HTLC_EXPIRY_BLOCKS, OPT_CANCEL_HOLD_BEFORE_INVOICE_EXPIRY_SECONDS,
+    model::{HoldHtlc, HoldInvoice, HtlcIdentifier, PluginState, HOLD_STARTUP_LOCK},
+    rpc::datastore_update_state,
+    OPT_CANCEL_HOLD_BEFORE_HTLC_EXPIRY_BLOCKS,
 };
+use crate::{rpc::listdatastore_payment_hash, util::cleanup_pluginstate_holdinvoices};
 
 const WIRE_INCORRECT_OR_UNKNOWN_PAYMENT_DETAILS: &str = "400F";
 
@@ -50,7 +47,7 @@ pub async fn htlc_handler(
     let htlc_hook = match serde_json::from_value::<HtlcHook>(v) {
         Ok(args) => args,
         Err(err) => {
-            warn!("htlc_accepted hook deserialization error: {}", err);
+            log::warn!("htlc_accepted hook deserialization error: {}", err);
             return Ok(json!({"result": "continue"}));
         }
     };
@@ -58,27 +55,24 @@ pub async fn htlc_handler(
         return Ok(json!({"result": "continue"}));
     }
 
-    debug!(
+    log::debug!(
         "payment_hash: `{}`. htlc_hook started!",
         htlc_hook.htlc.payment_hash
     );
-    // let rpc_path = make_rpc_path(plugin.clone());
-    // let mut rpc = ClnRpc::new(&rpc_path)
-    //     .await
-    //     .context("rpc connection full")?;
 
     let is_new_invoice;
 
     let invoice;
     let global_htlc_ident;
     let hold_state;
+    let preimage;
 
     {
         let mut holdinvoices = plugin.state().holdinvoices.lock().await;
         let generation;
         if let Some(holdinvoice) = holdinvoices.get_mut(&htlc_hook.htlc.payment_hash) {
             is_new_invoice = false;
-            debug!(
+            log::debug!(
                 "payment_hash: `{}`. Htlc is for a known holdinvoice! Processing...",
                 htlc_hook.htlc.payment_hash
             );
@@ -86,44 +80,28 @@ pub async fn htlc_handler(
             hold_state = holdinvoice.hold_state;
             invoice = holdinvoice.invoice.clone();
             generation = holdinvoice.generation;
+            preimage = holdinvoice.preimage.clone();
         } else {
             is_new_invoice = true;
-            debug!(
+            log::debug!(
                 "payment_hash: `{}`. New htlc, checking if it's our invoice...",
                 htlc_hook.htlc.payment_hash
             );
-            let mut rpc = plugin.state().rpc.lock().await;
+            let mut rpc = plugin.state().loop_rpc.lock().await;
 
-            match listdatastore_state(&mut rpc, htlc_hook.htlc.payment_hash.clone()).await {
-                Ok(dbstate) => {
-                    debug!(
+            match listdatastore_payment_hash(&mut rpc, &htlc_hook.htlc.payment_hash).await {
+                Ok((dbstate, gen)) => {
+                    log::debug!(
                         "payment_hash: `{}`. Htlc is for a holdinvoice! Processing...",
                         htlc_hook.htlc.payment_hash
                     );
-                    hold_state = Holdstate::from_str(&dbstate.string.unwrap())?;
-                    generation = dbstate.generation.unwrap_or(0);
-
-                    invoice = rpc
-                        .call_typed(&ListinvoicesRequest {
-                            index: None,
-                            invstring: None,
-                            label: None,
-                            limit: None,
-                            offer_id: None,
-                            payment_hash: Some(htlc_hook.htlc.payment_hash.clone()),
-                            start: None,
-                        })
-                        .await?
-                        .invoices
-                        .first()
-                        .ok_or(anyhow!(
-                            "payment_hash: `{}`. holdinvoice not found!",
-                            htlc_hook.htlc.payment_hash
-                        ))?
-                        .clone();
+                    hold_state = dbstate.state;
+                    invoice = Bolt11Invoice::from_str(&dbstate.bolt11)?;
+                    generation = gen;
+                    preimage = dbstate.preimage;
                 }
                 Err(_e) => {
-                    debug!(
+                    log::debug!(
                         "payment_hash: `{}`. Not a holdinvoice! Continue...",
                         htlc_hook.htlc.payment_hash
                     );
@@ -154,6 +132,7 @@ pub async fn htlc_handler(
                     generation,
                     htlc_data,
                     invoice: invoice.clone(),
+                    preimage,
                 },
             );
         } else {
@@ -170,7 +149,7 @@ pub async fn htlc_handler(
     }
 
     if let Holdstate::Canceled = hold_state {
-        info!(
+        log::info!(
             "payment_hash: `{}`. Htlc arrived after \
                         hold-cancellation was requested. \
                         Rejecting htlc...",
@@ -191,7 +170,7 @@ pub async fn htlc_handler(
         }));
     }
 
-    info!(
+    log::info!(
         "payment_hash: `{}` scid: `{}` htlc_id: `{}`. \
                 Holding {}msat",
         htlc_hook.htlc.payment_hash,
@@ -216,13 +195,11 @@ async fn loop_htlc_hold(
     // rpc: &mut ClnRpc,
     payment_hash: &str,
     global_htlc_ident: HtlcIdentifier,
-    invoice: ListinvoicesInvoices,
+    invoice: Bolt11Invoice,
     cltv_expiry: u32,
     amount_msat: u64,
 ) -> Result<serde_json::Value, Error> {
     let mut first_iter = true;
-    let cancel_hold_before_invoice_expiry_seconds =
-        plugin.option(&OPT_CANCEL_HOLD_BEFORE_INVOICE_EXPIRY_SECONDS)? as u64;
     let cancel_hold_before_htlc_expiry_blocks =
         plugin.option(&OPT_CANCEL_HOLD_BEFORE_HTLC_EXPIRY_BLOCKS)? as u32;
     loop {
@@ -236,21 +213,19 @@ async fn loop_htlc_hold(
         let holdinvoice_data = if let Some(hd) = holdinvoices.get_mut(payment_hash) {
             hd
         } else {
-            warn!(
+            log::warn!(
                 "payment_hash: `{}` scid: `{}` htlc: `{}`. \
                         DROPPED INVOICE from internal state!",
-                payment_hash, global_htlc_ident.scid, global_htlc_ident.htlc_id
+                payment_hash,
+                global_htlc_ident.scid,
+                global_htlc_ident.htlc_id
             );
             return Err(anyhow!(
                 "Invoice dropped from internal state unexpectedly: {}",
                 payment_hash
             ));
         };
-        let mut rpc = plugin.state().rpc.lock().await;
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+        let mut rpc = plugin.state().loop_rpc.lock().await;
 
         #[allow(clippy::clone_on_copy)]
         if holdinvoice_data
@@ -261,15 +236,15 @@ async fn loop_htlc_hold(
             .lock()
             .await
             .clone()
-            || invoice.expires_at <= now + cancel_hold_before_invoice_expiry_seconds
         {
-            match listdatastore_state(&mut rpc, payment_hash.to_owned()).await {
-                Ok(s) => {
-                    holdinvoice_data.hold_state = Holdstate::from_str(&s.string.unwrap())?;
-                    holdinvoice_data.generation = s.generation.unwrap_or(0);
+            match listdatastore_payment_hash(&mut rpc, payment_hash).await {
+                Ok((dbstate, gen)) => {
+                    holdinvoice_data.hold_state = dbstate.state;
+                    holdinvoice_data.generation = gen;
+                    holdinvoice_data.preimage = dbstate.preimage;
                 }
                 Err(e) => {
-                    warn!(
+                    log::warn!(
                         "Error getting state for payment_hash: {} {}",
                         payment_hash,
                         e.to_string()
@@ -281,28 +256,33 @@ async fn loop_htlc_hold(
             // cln cannot accept htlcs for expired invoices
             #[allow(clippy::clone_on_copy)]
             let blockheight = plugin.state().blockheight.lock().clone();
-            let soft_expired = cltv_expiry <= blockheight + cancel_hold_before_htlc_expiry_blocks
-                || invoice.expires_at <= now + cancel_hold_before_invoice_expiry_seconds;
-            let hard_expired = cltv_expiry <= blockheight || invoice.expires_at <= now;
-            if soft_expired && holdinvoice_data.hold_state == Holdstate::Accepted && !hard_expired {
+            let soft_expired = cltv_expiry <= blockheight + cancel_hold_before_htlc_expiry_blocks;
+            let hard_expired = cltv_expiry <= blockheight;
+            if soft_expired
+                && holdinvoice_data.hold_state == Holdstate::Accepted
+                && !hard_expired
+                && holdinvoice_data.preimage.is_some()
+            {
                 match datastore_update_state(
                     &mut rpc,
                     payment_hash.to_owned(),
-                    Holdstate::Settled.to_string(),
+                    Holdstate::Settled,
                     holdinvoice_data.generation,
                 )
                 .await
                 {
                     Ok(_o) => {
-                        info!(
+                        log::info!(
                             "payment_hash: `{}` scid: `{}` htlc: `{}`. \
-                            holdinvoice/htlc about to expire! Settling htlc...",
-                            payment_hash, global_htlc_ident.scid, global_htlc_ident.htlc_id
+                            htlc about to expire! Settling htlc...",
+                            payment_hash,
+                            global_htlc_ident.scid,
+                            global_htlc_ident.htlc_id
                         );
                         holdinvoice_data.hold_state = Holdstate::Settled
                     }
                     Err(e) => {
-                        warn!(
+                        log::warn!(
                             "Error updating state for payment_hash: {} {}",
                             payment_hash,
                             e.to_string()
@@ -310,27 +290,31 @@ async fn loop_htlc_hold(
                         continue;
                     }
                 }
-            } else if (soft_expired && holdinvoice_data.hold_state == Holdstate::Open)
+            } else if (soft_expired
+                && (holdinvoice_data.hold_state == Holdstate::Open
+                    || holdinvoice_data.hold_state == Holdstate::Accepted))
                 || hard_expired
             {
                 match datastore_update_state(
                     &mut rpc,
                     payment_hash.to_owned(),
-                    Holdstate::Canceled.to_string(),
+                    Holdstate::Canceled,
                     holdinvoice_data.generation,
                 )
                 .await
                 {
                     Ok(_o) => {
-                        warn!(
+                        log::warn!(
                             "payment_hash: `{}` scid: `{}` htlc: `{}`. \
-                            holdinvoice/htlc expired! Canceling htlc...",
-                            payment_hash, global_htlc_ident.scid, global_htlc_ident.htlc_id
+                            htlc expired! Canceling htlc...",
+                            payment_hash,
+                            global_htlc_ident.scid,
+                            global_htlc_ident.htlc_id
                         );
                         holdinvoice_data.hold_state = Holdstate::Canceled
                     }
                     Err(e) => {
-                        warn!(
+                        log::warn!(
                             "Error updating state for payment_hash: {} {}",
                             payment_hash,
                             e.to_string()
@@ -342,27 +326,27 @@ async fn loop_htlc_hold(
 
             match holdinvoice_data.hold_state {
                 Holdstate::Open => {
-                    if Amount::msat(&invoice.amount_msat.unwrap())
-                        <= holdinvoice_data
-                            .htlc_data
-                            .values()
-                            .map(|htlc| htlc.amount_msat)
-                            .sum()
-                        && holdinvoice_data
-                            .hold_state
-                            .is_valid_transition(&Holdstate::Accepted)
+                    if invoice.is_expired()
+                        && plugin.state().startup_time
+                            < SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs()
+                                - HOLD_STARTUP_LOCK
                     {
+                        log::info!(
+                            "payment_hash: `{}` Invoice expired before enough \
+                        funds were received, canceling any remaining htlcs",
+                            payment_hash
+                        );
                         match datastore_update_state(
                             &mut rpc,
                             payment_hash.to_owned(),
-                            Holdstate::Accepted.to_string(),
+                            Holdstate::Canceled,
                             holdinvoice_data.generation,
                         )
                         .await
                         {
                             Ok(_o) => (),
                             Err(e) => {
-                                warn!(
+                                log::warn!(
                                     "Error updating state for payment_hash: {} {}",
                                     payment_hash,
                                     e.to_string()
@@ -370,11 +354,38 @@ async fn loop_htlc_hold(
                                 continue;
                             }
                         };
-                        info!(
+                    } else if holdinvoice_data
+                        .htlc_data
+                        .values()
+                        .map(|htlc| htlc.amount_msat)
+                        .sum::<u64>()
+                        >= invoice.amount_milli_satoshis().unwrap()
+                    {
+                        match datastore_update_state(
+                            &mut rpc,
+                            payment_hash.to_owned(),
+                            Holdstate::Accepted,
+                            holdinvoice_data.generation,
+                        )
+                        .await
+                        {
+                            Ok(_o) => (),
+                            Err(e) => {
+                                log::warn!(
+                                    "Error updating state for payment_hash: {} {}",
+                                    payment_hash,
+                                    e.to_string()
+                                );
+                                continue;
+                            }
+                        };
+                        log::info!(
                             "payment_hash: `{}` scid: `{}` htlc: `{}`. \
                                     Got enough msats for holdinvoice. \
                                     State=ACCEPTED",
-                            payment_hash, global_htlc_ident.scid, global_htlc_ident.htlc_id
+                            payment_hash,
+                            global_htlc_ident.scid,
+                            global_htlc_ident.htlc_id
                         );
                         *holdinvoice_data
                             .htlc_data
@@ -384,15 +395,17 @@ async fn loop_htlc_hold(
                             .lock()
                             .await = false;
                     } else {
-                        debug!(
+                        log::debug!(
                             "payment_hash: `{}` scid: `{}` htlc: `{}`. \
                                     Not enough msats for holdinvoice yet.",
-                            payment_hash, global_htlc_ident.scid, global_htlc_ident.htlc_id
+                            payment_hash,
+                            global_htlc_ident.scid,
+                            global_htlc_ident.htlc_id
                         );
                     }
                 }
                 Holdstate::Accepted => {
-                    if Amount::msat(&invoice.amount_msat.unwrap())
+                    if invoice.amount_milli_satoshis().unwrap()
                         > holdinvoice_data
                             .htlc_data
                             .values()
@@ -402,14 +415,14 @@ async fn loop_htlc_hold(
                         match datastore_update_state(
                             &mut rpc,
                             payment_hash.to_owned(),
-                            Holdstate::Open.to_string(),
+                            Holdstate::Open,
                             holdinvoice_data.generation,
                         )
                         .await
                         {
                             Ok(_o) => (),
                             Err(e) => {
-                                warn!(
+                                log::warn!(
                                     "Error updating state for payment_hash: {} {}",
                                     payment_hash,
                                     e.to_string()
@@ -417,18 +430,22 @@ async fn loop_htlc_hold(
                                 continue;
                             }
                         };
-                        warn!(
+                        log::warn!(
                             "payment_hash: `{}` scid: `{}` htlc: `{}`. \
                                     No longer enough msats for holdinvoice! \
                                     This should only happen during a node restart! \
                                     Back to OPEN state!",
-                            payment_hash, global_htlc_ident.scid, global_htlc_ident.htlc_id
+                            payment_hash,
+                            global_htlc_ident.scid,
+                            global_htlc_ident.htlc_id
                         );
                     } else {
-                        debug!(
+                        log::debug!(
                             "payment_hash: `{}` scid: `{}` htlc: `{}`. \
                                     Holding accepted holdinvoice.",
-                            payment_hash, global_htlc_ident.scid, global_htlc_ident.htlc_id
+                            payment_hash,
+                            global_htlc_ident.scid,
+                            global_htlc_ident.htlc_id
                         );
                         *holdinvoice_data
                             .htlc_data
@@ -440,11 +457,15 @@ async fn loop_htlc_hold(
                     }
                 }
                 Holdstate::Settled => {
-                    info!(
+                    log::info!(
                         "payment_hash: `{}` scid: `{}` htlc: `{}`. \
                                     Settling htlc for holdinvoice. State=SETTLED",
-                        payment_hash, global_htlc_ident.scid, global_htlc_ident.htlc_id
+                        payment_hash,
+                        global_htlc_ident.scid,
+                        global_htlc_ident.htlc_id
                     );
+
+                    let preimage = holdinvoice_data.preimage.clone().unwrap();
 
                     cleanup_pluginstate_holdinvoices(
                         &mut holdinvoices,
@@ -453,14 +474,16 @@ async fn loop_htlc_hold(
                     )
                     .await;
 
-                    return Ok(json!({"result": "continue"}));
+                    return Ok(json!({"result": "resolve", "payment_key":preimage}));
                 }
                 Holdstate::Canceled => {
-                    info!(
+                    log::info!(
                         "payment_hash: `{}` scid: `{}` htlc: `{}`. \
                                     Rejecting htlc for canceled holdinvoice. \
                                     State=CANCELED",
-                        payment_hash, global_htlc_ident.scid, global_htlc_ident.htlc_id
+                        payment_hash,
+                        global_htlc_ident.scid,
+                        global_htlc_ident.htlc_id
                     );
 
                     cleanup_pluginstate_holdinvoices(

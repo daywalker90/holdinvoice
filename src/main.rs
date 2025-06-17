@@ -6,8 +6,9 @@ use anyhow::{anyhow, Context, Result};
 use cln_plugin::options::{ConfigOption, DefaultIntegerConfigOption, IntegerConfigOption};
 use cln_plugin::Plugin;
 use cln_plugin::{Builder, ConfiguredPlugin};
+use cln_rpc::model::requests::GetinfoRequest;
 use cln_rpc::ClnRpc;
-use log::{debug, info, warn};
+use lightning_invoice::Currency;
 use model::{PluginState, HOLD_STARTUP_LOCK};
 use parking_lot::Mutex;
 use std::collections::BTreeMap;
@@ -15,11 +16,14 @@ use std::error::Error;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tls::do_certificates_exist;
 use tokio::time;
 
-use crate::hold::{hold_invoice, hold_invoice_cancel, hold_invoice_lookup, hold_invoice_settle};
+use crate::hold::{
+    hold_invoice, hold_invoice_cancel, hold_invoice_lookup, hold_invoice_settle,
+    holdinvoice_version,
+};
 
 mod config;
 mod errors;
@@ -44,24 +48,23 @@ const OPT_CANCEL_HOLD_BEFORE_HTLC_EXPIRY_BLOCKS: DefaultIntegerConfigOption =
         6,
         "Number of blocks before expiring htlcs get auto-canceled and invoice is canceled",
     );
-const OPT_CANCEL_HOLD_BEFORE_INVOICE_EXPIRY_SECONDS: DefaultIntegerConfigOption =
-    ConfigOption::new_i64_with_default(
-        "holdinvoice-cancel-before-invoice-expiry",
-        1_800,
-        "Seconds before invoice expiry when an invoice and pending htlcs get auto-canceled",
-    );
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), anyhow::Error> {
     std::env::set_var(
         "CLN_PLUGIN_LOG",
-        "cln_plugin=info,cln_rpc=info,cln_grpc=info,holdinvoice=debug,warn",
+        "cln_plugin=info,cln_rpc=info,cln_grpc=info,holdinvoice=trace,warn",
     );
+    log_panics::init();
 
     let plugin = match Builder::new(tokio::io::stdin(), tokio::io::stdout())
         .option(OPT_GRPC_HOLD_PORT)
         .option(OPT_CANCEL_HOLD_BEFORE_HTLC_EXPIRY_BLOCKS)
-        .option(OPT_CANCEL_HOLD_BEFORE_INVOICE_EXPIRY_SECONDS)
+        .rpcmethod(
+            "holdinvoice-version",
+            "get holdinvoice plugin version",
+            holdinvoice_version,
+        )
         .rpcmethod(
             "holdinvoice",
             "create a new invoice and hold it",
@@ -88,12 +91,12 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?
     {
         Some(p) => {
-            info!("verifying config options");
+            log::info!("verifying config options");
             match config::verify_config_options(&p) {
                 Ok(()) => (),
                 Err(e) => {
                     log_error(e.to_string());
-                    return Err(e);
+                    return p.disable(&e.to_string()).await;
                 }
             };
             p
@@ -115,7 +118,7 @@ async fn main() -> Result<(), anyhow::Error> {
         Ok(s) => s,
         Err(e) => {
             log_error(e.to_string());
-            return Err(e);
+            return plugin.disable(&e.to_string()).await;
         }
     };
 
@@ -127,7 +130,7 @@ async fn main() -> Result<(), anyhow::Error> {
             tokio::spawn(async move {
                 match tasks::autoclean_holdinvoice_db(cleanupclone).await {
                     Ok(()) => (),
-                    Err(e) => warn!(
+                    Err(e) => log::warn!(
                         "Error in autoclean_holdinvoice_db thread: {}",
                         e.to_string()
                     ),
@@ -149,8 +152,10 @@ async fn main() -> Result<(), anyhow::Error> {
         });
     }
 
-    time::sleep(Duration::from_secs(HOLD_STARTUP_LOCK)).await;
-    *confplugin.state().startup_lock.lock() = false;
+    {
+        let _startup_lock = confplugin.state().method_rpc.lock().await;
+        time::sleep(Duration::from_secs(HOLD_STARTUP_LOCK)).await;
+    }
 
     confplugin.join().await
 }
@@ -171,15 +176,29 @@ async fn init_plugin_state(
 
     let rpc_path =
         Path::new(&plugin.configuration().lightning_dir).join(plugin.configuration().rpc_file);
-    let rpc = ClnRpc::new(&rpc_path).await?;
+    let mut method_rpc = ClnRpc::new(&rpc_path).await?;
+
+    let getinfo = method_rpc.call_typed(&GetinfoRequest {}).await?;
+
+    let currency = match getinfo.network.as_str() {
+        "bitcoin" => Currency::Bitcoin,
+        "testnet" => Currency::BitcoinTestnet,
+        "signet" => Currency::Signet,
+        "regtest" => Currency::Regtest,
+        _ => return Err(anyhow!("Unsupported network: {}", getinfo.network)),
+    };
+
+    let loop_rpc = ClnRpc::new(&rpc_path).await?;
 
     Ok(PluginState {
         blockheight: Arc::new(Mutex::new(u32::default())),
         holdinvoices: Arc::new(tokio::sync::Mutex::new(BTreeMap::new())),
         identity,
         ca_cert,
-        startup_lock: Arc::new(Mutex::new(true)),
-        rpc: Arc::new(tokio::sync::Mutex::new(rpc)),
+        method_rpc: Arc::new(tokio::sync::Mutex::new(method_rpc)),
+        loop_rpc: Arc::new(tokio::sync::Mutex::new(loop_rpc)),
+        currency,
+        startup_time: SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
     })
 }
 
@@ -205,9 +224,10 @@ async fn run_interface(
         ))
         .serve(bind_addr);
 
-    debug!(
+    log::debug!(
         "Connecting to {:?} and serving grpc on {:?}",
-        rpc_path, &bind_addr
+        rpc_path,
+        &bind_addr
     );
 
     server
@@ -215,7 +235,7 @@ async fn run_interface(
         .map_err(|e| anyhow!("Error serving grpc: {} {:?}", e.to_string(), e.source()))
 }
 
-fn log_error(error: String) {
+pub fn log_error(error: String) {
     println!(
         "{}",
         serde_json::json!({"jsonrpc": "2.0",

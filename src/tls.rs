@@ -1,12 +1,11 @@
 //! Utilities to manage TLS certificates.
 use anyhow::{Context, Result};
-use log::debug;
 use rcgen::{Certificate, KeyPair};
 use std::path::Path;
 
 /// Just a wrapper around a certificate and an associated keypair.
 #[derive(Clone, Debug)]
-pub(crate) struct Identity {
+pub struct Identity {
     key: Vec<u8>,
     certificate: Vec<u8>,
 }
@@ -73,7 +72,7 @@ fn generate_or_load_identity(
     // Did we have to generate a new key? In that case we also need to
     // regenerate the certificate
     if !key_path.exists() || !cert_path.exists() {
-        debug!(
+        log::debug!(
             "Generating a new keypair in {:?}, it didn't exist",
             &key_path
         );
@@ -90,9 +89,10 @@ fn generate_or_load_identity(
         file.write_all(keypair.serialize_pem().as_bytes())?;
         drop(file);
 
-        debug!(
+        log::debug!(
             "Generating a new certificate for key {:?} at {:?}",
-            &key_path, &cert_path
+            &key_path,
+            &cert_path
         );
 
         // Configure the certificate we want.
