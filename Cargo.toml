@@ -21,12 +21,14 @@ cln-plugin = "0.4"
 # cln-plugin = { path="../lightning/plugins/", version = "^0.3" }
 
 hex = "0.4"
-bitcoin = { version = "0.32", features = [ "serde", "rand-std" ] }
+bitcoin = { version = "0.32", features = ["serde", "rand-std"] }
 
-lightning-invoice = { version = "0.33", features = [ "std" ] }
+lightning-invoice = { version = "0.33", features = ["std"] }
+
+tokio-stream = { version = "0.1", features = ["sync"] }
 
 [dependencies.tokio]
-features = ["fs","net", "rt-multi-thread"]
+features = ["fs", "net", "rt-multi-thread"]
 version = "1"
 
 [dependencies.tonic]

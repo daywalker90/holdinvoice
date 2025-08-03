@@ -7,6 +7,8 @@ use cln_plugin::Plugin;
 use serde_json::{json, Map};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use tokio_stream::wrappers::BroadcastStream;
+use tokio_stream::StreamExt;
 use tonic::{Code, Status};
 
 #[derive(Clone)]
@@ -209,5 +211,27 @@ impl Hold for Server {
         Ok(tonic::Response::new(pb::HoldInvoiceVersionResponse {
             version: format!("v{}", env!("CARGO_PKG_VERSION")),
         }))
+    }
+
+    type SubscribeHoldInvoiceAcceptedStream = Box<
+        dyn tokio_stream::Stream<Item = Result<pb::HoldInvoiceAcceptedNotification, Status>>
+            + Send
+            + Unpin
+            + 'static,
+    >;
+
+    async fn subscribe_hold_invoice_accepted(
+        &self,
+        _request: tonic::Request<pb::HoldInvoiceAcceptedRequest>,
+    ) -> Result<tonic::Response<Self::SubscribeHoldInvoiceAcceptedStream>, tonic::Status> {
+        let receiver = self.plugin.state().notification.subscribe();
+        let stream = BroadcastStream::new(receiver).map(|s| match s {
+            Ok(notification) => Ok(notification.into()),
+            Err(e) => Err(Status::internal(format!(
+                "Notifications broadcast error: {e}"
+            ))),
+        });
+
+        Ok(tonic::Response::new(Box::new(stream)))
     }
 }

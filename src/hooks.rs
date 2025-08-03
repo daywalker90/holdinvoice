@@ -13,11 +13,14 @@ use serde::Deserialize;
 use serde_json::json;
 use tokio::time::{self};
 
-use crate::Holdstate;
 use crate::{
     model::{HoldHtlc, HoldInvoice, HtlcIdentifier, PluginState, HOLD_STARTUP_LOCK},
     rpc::datastore_update_state,
     OPT_CANCEL_HOLD_BEFORE_HTLC_EXPIRY_BLOCKS,
+};
+use crate::{
+    model::{HoldInvoiceAcceptedNotification, HOLD_INVOICE_ACCEPTED_NOTIFICATION},
+    Holdstate,
 };
 use crate::{rpc::listdatastore_payment_hash, util::cleanup_pluginstate_holdinvoices};
 
@@ -387,6 +390,24 @@ async fn loop_htlc_hold(
                             global_htlc_ident.scid,
                             global_htlc_ident.htlc_id
                         );
+
+                        let notification = HoldInvoiceAcceptedNotification {
+                            payment_hash: payment_hash.to_owned(),
+                            htlc_expiry: holdinvoice_data
+                                .htlc_data
+                                .values()
+                                .map(|htlc| htlc.cltv_expiry)
+                                .min()
+                                .unwrap(),
+                        };
+                        let _notify = plugin
+                            .send_custom_notification(
+                                HOLD_INVOICE_ACCEPTED_NOTIFICATION.to_owned(),
+                                json!(notification),
+                            )
+                            .await;
+                        let _grpc_notify = plugin.state().notification.send(notification);
+
                         *holdinvoice_data
                             .htlc_data
                             .get(&global_htlc_ident)

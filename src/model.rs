@@ -12,8 +12,10 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
+use tokio::sync::broadcast;
 
 pub const HOLD_INVOICE_PLUGIN_NAME: &str = "holdinvoice_v2";
+pub const HOLD_INVOICE_ACCEPTED_NOTIFICATION: &str = "holdinvoice_accepted";
 pub const HOLD_STARTUP_LOCK: u64 = 20;
 pub const DEFAULT_CLTV_DELTA: u64 = 144;
 pub const DEFAULT_EXPIRY: u64 = 604_800;
@@ -99,6 +101,7 @@ pub struct PluginState {
     pub loop_rpc: Arc<tokio::sync::Mutex<ClnRpc>>,
     pub currency: Currency,
     pub startup_time: u64,
+    pub notification: broadcast::Sender<HoldInvoiceAcceptedNotification>,
 }
 
 fn is_none_or_empty<T>(f: &Option<Vec<T>>) -> bool
@@ -222,4 +225,18 @@ impl From<HoldLookupResponse> for pb::HoldInvoiceLookupResponse {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct HoldStateResponse {
     pub state: Holdstate,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct HoldInvoiceAcceptedNotification {
+    pub payment_hash: String,
+    pub htlc_expiry: u32,
+}
+impl From<HoldInvoiceAcceptedNotification> for pb::HoldInvoiceAcceptedNotification {
+    fn from(c: HoldInvoiceAcceptedNotification) -> Self {
+        Self {
+            payment_hash: hex::decode(c.payment_hash).unwrap(),
+            htlc_expiry: c.htlc_expiry,
+        }
+    }
 }

@@ -288,11 +288,27 @@ def test_valid_hold_then_settle(node_factory, bitcoind, get_plugin):  # noqa: F8
 
     threading.Thread(target=xpay_with_thread, args=(l1, result.bolt11)).start()
 
+    request_notification = holdrpc.HoldInvoiceAcceptedRequest()
+
+    try:
+        result_notification = hold_stub.SubscribeHoldInvoiceAccepted(
+            request_notification
+        )
+
+        for response in result_notification:
+            LOGGER.info(f"notification: {response}")
+            if (
+                response.payment_hash == result.payment_hash
+                and response.htlc_expiry > 0
+            ):
+                break
+            else:
+                assert False
+    except grpc.RpcError as e:
+        LOGGER.info(f"error receiving notification: {e}")
+        assert False
+
     request_lookup = holdrpc.HoldInvoiceLookupRequest(payment_hash=result.payment_hash)
-    wait_for(
-        lambda: hold_stub.HoldInvoiceLookup(request_lookup).holdinvoices[0].state
-        == holdrpc.Holdstate.ACCEPTED
-    )
     result_lookup = hold_stub.HoldInvoiceLookup(request_lookup)
     assert result_lookup is not None
     assert isinstance(result_lookup, holdrpc.HoldInvoiceLookupResponse) is True

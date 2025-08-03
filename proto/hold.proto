@@ -8,6 +8,8 @@ service Hold {
 	rpc HoldInvoiceCancel(HoldInvoiceCancelRequest) returns (HoldInvoiceCancelResponse) {}
 	rpc HoldInvoiceLookup(HoldInvoiceLookupRequest) returns (HoldInvoiceLookupResponse) {}
 	rpc HoldInvoiceVersion(HoldInvoiceVersionRequest) returns (HoldInvoiceVersionResponse) {}
+
+	rpc SubscribeHoldInvoiceAccepted(HoldInvoiceAcceptedRequest) returns (stream HoldInvoiceAcceptedNotification) {}
 }
 
 message Amount {
@@ -84,4 +86,11 @@ message HoldInvoiceVersionRequest{}
 
 message HoldInvoiceVersionResponse{
 	string version = 1;
+}
+
+message HoldInvoiceAcceptedRequest{}
+
+message HoldInvoiceAcceptedNotification{
+	bytes payment_hash = 1;
+	uint32 htlc_expiry = 2;
 }

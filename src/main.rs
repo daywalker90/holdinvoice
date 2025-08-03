@@ -1,8 +1,9 @@
 #![recursion_limit = "1024"]
-use crate::model::Holdstate;
+use crate::model::{Holdstate, HOLD_INVOICE_ACCEPTED_NOTIFICATION};
 use crate::pb::hold_server::HoldServer;
 use crate::util::make_rpc_path;
 use anyhow::{anyhow, Context, Result};
+use cln_plugin::messages::NotificationTopic;
 use cln_plugin::options::{ConfigOption, DefaultIntegerConfigOption, IntegerConfigOption};
 use cln_plugin::Plugin;
 use cln_plugin::{Builder, ConfiguredPlugin};
@@ -18,6 +19,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tls::do_certificates_exist;
+use tokio::sync::broadcast;
 use tokio::time;
 
 use crate::hold::{
@@ -87,6 +89,7 @@ async fn main() -> Result<(), anyhow::Error> {
         )
         .hook("htlc_accepted", hooks::htlc_handler)
         .subscribe("block_added", hooks::block_added)
+        .notification(NotificationTopic::new(HOLD_INVOICE_ACCEPTED_NOTIFICATION))
         .configure()
         .await?
     {
@@ -190,6 +193,8 @@ async fn init_plugin_state(
 
     let loop_rpc = ClnRpc::new(&rpc_path).await?;
 
+    let (sender, _) = broadcast::channel(256);
+
     Ok(PluginState {
         blockheight: Arc::new(Mutex::new(u32::default())),
         holdinvoices: Arc::new(tokio::sync::Mutex::new(BTreeMap::new())),
@@ -199,6 +204,7 @@ async fn init_plugin_state(
         loop_rpc: Arc::new(tokio::sync::Mutex::new(loop_rpc)),
         currency,
         startup_time: SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
+        notification: sender,
     })
 }
 

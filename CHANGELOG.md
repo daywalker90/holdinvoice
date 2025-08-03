@@ -22,6 +22,7 @@
 - `holdinvoice`: `exposeprivatechannels` argument aswell as it's default functionality like in CLN's `invoice` command.
 - `holdinvoice`: Some optional return fields have been added: ``description``, ``description_hash``, ``preimage``
 - `holdinvoicesettle`: new `preimage` argument. If you have only provided a `payment_hash` during invoice creation you must now provide the ``preimage`` here.
+- New ``holdinvoice_accepted`` notification for both rpc and grpc that notifies you when a holdinvoice switches into the `ACCEPTED` state with a notification that contains it's `payment_hash` and the `htlc_expiry` for the HTLC that will expire first
 
 
 ### Removed

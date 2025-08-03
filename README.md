@@ -108,6 +108,7 @@ After that the binary will be here: ``target/release/holdinvoice``
 Note: Release binaries are built using ``cross`` and the ``optimized`` profile.
 
 # Documentation
+## Methods
 These are the rpc/grpc methods provided by this plugin, for details check the ``hold.proto`` file in ``proto``:
 * **holdinvoice**: *amount_msat* *description* [*expiry*] [*payment_hash*] [*preimage*] [*cltv*] [*deschashonly*] [*exposeprivatechannels*]
     * Create an invoice where the HTLC's will be held by the plugin.
@@ -129,6 +130,10 @@ These are the rpc/grpc methods provided by this plugin, for details check the ``
         * ``CANCELED`` (invoice unpaid and will not accept any further HTLC's even if not yet expired)
 * **holdinvoice-version**:
     * Returns an object containing `version` with the version of the plugin
+
+## Notification
+* **holdinvoice_accepted**: a notification that is send out for rpc and grpc when a holdinvoice switches into the `ACCEPTED` state.
+    * Notification contains the `payment_hash` and the `htlc_expiry` of the HTLC that will expire first
 
 The plugin will automatically settle any holdinvoice if a pending HTLC is close to expiry and would otherwise cause a force close of the channel. This is of course only possible if the plugin already knows the preimage, otherwise it will cancel at this point. You can configure when the block expiry happens with the option below. If for some reason the plugin was not able to settle a holdinvoice in time (e.g. your node was down) the plugin will CANCEL the holdinvoice! 
 
