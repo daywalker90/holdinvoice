@@ -140,4 +140,7 @@ The plugin will automatically settle any holdinvoice if a pending HTLC is close 
 # Options
 You can set the following option(s) in your CLN config file:
 
+* ``grpc-hold-port``: Set this to your desired port for the grpc server, unset it defaults to disabling grpc
 * ``holdinvoice-cancel-before-htlc-expiry``: number of blocks before HTLC's expiry where the plugin auto-cancels invoice and HTLC's, Default: ``6``
+* ``holdinvoice-startup-lock``: time in seconds after the start of the plugin to wait before answering to rpc commands. This is needed when there are HTLC's being replayed to the plugin during a node restart so the rpc commands will return consistent states for holdinvoices. This is also the grace period for HTLC's for expired invoices to still be accepted during a node restart. Defaults to ``20``s
+

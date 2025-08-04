@@ -12,7 +12,7 @@
 - The plugin can now hold HTLC's beyond the invoices expiry and then settle/cancel. It is now only bound by the blockheight expiry of the HTLC's
 - `holdinvoice`: `cltv` is no longer mandatory and defaults to ``144``
 - The plugin sometimes didn't return a real error, but an ok response with a json rpc error object. It now always returns a real error response but they will always have the `code` as `-32700`
-- Give HTLC's 20s (was 10s) for replaying during node restarts before answering to rpc calls
+- Give HTLC's 20s (was 10s) for replaying during node restarts before answering to rpc calls and make it an option called ``holdinvoice-startup-lock``
 - Instead of ``holdinvoicelookup``, ``holdinvoicesettle`` and ``holdinvoicecancel`` will wait for HTLC' completion with a timeout of now 30s
 - ``holdinvoicelookup`` can now be called without a ``payment_hash`` and will return an object called ``holdinvoices`` with an array of objects containing all holdinvoices or the one specified by ``payment_hash`` with the same fields as the ``holdinvoice`` response
 
