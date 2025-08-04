@@ -5,21 +5,19 @@ use std::{
 
 use crate::{pb, tls::Identity};
 use anyhow::anyhow;
-use bitcoin::hashes::sha256::Hash as Sha256;
 use cln_plugin::Error;
-use cln_rpc::{
-    model::responses::ListinvoicesInvoices,
-    primitives::{Secret, ShortChannelId},
-    ClnRpc,
-};
+use cln_rpc::{primitives::ShortChannelId, ClnRpc};
+use lightning_invoice::{Bolt11Invoice, Currency};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
+use tokio::sync::broadcast;
 
-pub const HOLD_INVOICE_PLUGIN_NAME: &str = "holdinvoice";
-pub const HOLD_INVOICE_DATASTORE_STATE: &str = "state";
-pub const HOLD_STARTUP_LOCK: u64 = 10;
+pub const HOLD_INVOICE_PLUGIN_NAME: &str = "holdinvoice_v2";
+pub const HOLD_INVOICE_ACCEPTED_NOTIFICATION: &str = "holdinvoice_accepted";
+pub const DEFAULT_CLTV_DELTA: u64 = 144;
+pub const DEFAULT_EXPIRY: u64 = 604_800;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
@@ -38,12 +36,12 @@ impl Holdstate {
             Holdstate::Accepted => 3,
         }
     }
-    pub fn is_valid_transition(&self, newstate: &Holdstate) -> bool {
+    pub fn is_valid_new_state(&self, newstate: &Holdstate) -> bool {
         match self {
-            Holdstate::Open => !matches!(newstate, Holdstate::Settled),
-            Holdstate::Settled => matches!(newstate, Holdstate::Settled),
-            Holdstate::Canceled => matches!(newstate, Holdstate::Canceled),
-            Holdstate::Accepted => !matches!(newstate, Holdstate::Open),
+            Holdstate::Open => !matches!(newstate, Holdstate::Open | Holdstate::Settled),
+            Holdstate::Settled => false,
+            Holdstate::Canceled => false,
+            Holdstate::Accepted => true,
         }
     }
 }
@@ -88,7 +86,8 @@ pub struct HoldInvoice {
     pub hold_state: Holdstate,
     pub generation: u64,
     pub htlc_data: HashMap<HtlcIdentifier, HoldHtlc>,
-    pub invoice: ListinvoicesInvoices,
+    pub invoice: Bolt11Invoice,
+    pub preimage: Option<String>,
 }
 
 #[derive(Clone)]
@@ -97,8 +96,11 @@ pub struct PluginState {
     pub holdinvoices: Arc<tokio::sync::Mutex<BTreeMap<String, HoldInvoice>>>,
     pub identity: Identity,
     pub ca_cert: Vec<u8>,
-    pub startup_lock: Arc<Mutex<bool>>,
-    pub rpc: Arc<tokio::sync::Mutex<ClnRpc>>,
+    pub method_rpc: Arc<tokio::sync::Mutex<ClnRpc>>,
+    pub loop_rpc: Arc<tokio::sync::Mutex<ClnRpc>>,
+    pub currency: Currency,
+    pub startup_time: u64,
+    pub notification: broadcast::Sender<HoldInvoiceAcceptedNotification>,
 }
 
 fn is_none_or_empty<T>(f: &Option<Vec<T>>) -> bool
@@ -112,68 +114,54 @@ where
 pub struct HoldInvoiceRequest {
     pub amount_msat: u64,
     pub description: String,
-    pub label: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expiry: Option<u64>,
     #[serde(skip_serializing_if = "is_none_or_empty")]
     pub exposeprivatechannels: Option<Vec<ShortChannelId>>,
-    #[serde(skip_serializing_if = "is_none_or_empty")]
-    pub fallbacks: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub preimage: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payment_hash: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cltv: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deschashonly: Option<bool>,
 }
 
-#[allow(unused_variables, deprecated)]
 impl From<HoldInvoiceRequest> for pb::HoldInvoiceRequest {
     fn from(c: HoldInvoiceRequest) -> Self {
         Self {
-            amount_msat: Some(pb::Amount {
-                msat: c.amount_msat,
-            }), // Rule #2 for type msat_or_any
-            description: c.description, // Rule #2 for type string
-            label: c.label,             // Rule #2 for type string
-            expiry: c.expiry,           // Rule #2 for type u64?
+            amount_msat: c.amount_msat,
+            description: c.description,
+            expiry: c.expiry,
             // Field: Invoice.fallbacks[]
             exposeprivatechannels: c
                 .exposeprivatechannels
                 .map(|arr| arr.into_iter().map(|i| i.to_string()).collect())
-                .unwrap_or_default(), // Rule #3
-            fallbacks: c
-                .fallbacks
-                .map(|arr| arr.into_iter().collect())
-                .unwrap_or_default(), // Rule #3
-            preimage: c.preimage.map(|v| hex::decode(v).unwrap()), // Rule #2 for type hex?
-            cltv: c.cltv,                                          // Rule #2 for type u32?
-            deschashonly: c.deschashonly,                          // Rule #2 for type boolean?
+                .unwrap_or_default(),
+            preimage: c.preimage.map(|v| hex::decode(v).unwrap()),
+            payment_hash: c.payment_hash.map(|v| hex::decode(v).unwrap()),
+            cltv: c.cltv,
+            deschashonly: c.deschashonly,
         }
     }
 }
-#[allow(unused_variables, deprecated)]
 impl From<pb::HoldInvoiceRequest> for HoldInvoiceRequest {
     fn from(c: pb::HoldInvoiceRequest) -> Self {
         Self {
-            amount_msat: if let Some(amount) = c.amount_msat {
-                amount.msat
-            } else {
-                0
-            },
-            description: c.description, // Rule #1 for type string
-            label: c.label,             // Rule #1 for type string
-            expiry: c.expiry,           // Rule #1 for type u64?
+            amount_msat: c.amount_msat,
+            description: c.description,
+            expiry: c.expiry,
             exposeprivatechannels: Some(
                 c.exposeprivatechannels
                     .into_iter()
                     .map(|s| cln_rpc::primitives::ShortChannelId::from_str(&s).unwrap())
                     .collect(),
-            ), // Rule #4
-            fallbacks: Some(c.fallbacks.into_iter().collect()), // Rule #4
-            preimage: c.preimage.map(hex::encode), // Rule #1 for type hex?
-            cltv: c.cltv,               // Rule #1 for type u32?
-            deschashonly: c.deschashonly, // Rule #1 for type boolean?
+            ),
+            preimage: c.preimage.map(hex::encode),
+            payment_hash: c.payment_hash.map(hex::encode),
+            cltv: c.cltv,
+            deschashonly: c.deschashonly,
         }
     }
 }
@@ -181,49 +169,71 @@ impl From<pb::HoldInvoiceRequest> for HoldInvoiceRequest {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct HoldInvoiceResponse {
     pub bolt11: String,
-    pub payment_hash: Sha256,
-    pub payment_secret: Secret,
+    pub amount_msat: u64,
+    pub payment_hash: String,
+    pub payment_secret: String,
+    pub created_at: u64,
     pub expires_at: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub warning_capacity: Option<String>,
+    pub preimage: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub warning_offline: Option<String>,
+    pub description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub warning_deadends: Option<String>,
+    pub description_hash: Option<String>,
+    pub state: Holdstate,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub warning_private_unused: Option<String>,
+    pub htlc_expiry: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub warning_mpp: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub created_index: Option<u64>,
+    pub paid_at: Option<u64>,
 }
 
-#[allow(unused_variables, deprecated)]
 impl From<HoldInvoiceResponse> for pb::HoldInvoiceResponse {
     fn from(c: HoldInvoiceResponse) -> Self {
         Self {
-            bolt11: c.bolt11, // Rule #2 for type string
-            payment_hash: <Sha256 as AsRef<[u8]>>::as_ref(&c.payment_hash).to_vec(), // Rule #2 for type hash
-            payment_secret: c.payment_secret.to_vec(), // Rule #2 for type secret
-            expires_at: c.expires_at,                  // Rule #2 for type u64
-            warning_capacity: c.warning_capacity,      // Rule #2 for type string?
-            warning_offline: c.warning_offline,        // Rule #2 for type string?
-            warning_deadends: c.warning_deadends,      // Rule #2 for type string?
-            warning_private_unused: c.warning_private_unused, // Rule #2 for type string?
-            warning_mpp: c.warning_mpp,                // Rule #2 for type string?
-            created_index: c.created_index,            // Rule #2 for type u64?
+            bolt11: c.bolt11,
+            payment_hash: hex::decode(c.payment_hash).unwrap(),
+            payment_secret: hex::decode(c.payment_secret).unwrap(),
+            expires_at: c.expires_at,
+            preimage: c.preimage.map(|v| hex::decode(v).unwrap()),
+            description: c.description,
+            description_hash: c.description_hash.map(|v| hex::decode(v).unwrap()),
+            state: c.state.as_i32(),
+            htlc_expiry: c.htlc_expiry,
+            paid_at: c.paid_at,
+            amount_msat: c.amount_msat,
+            created_at: c.created_at,
         }
     }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct HoldLookupResponse {
-    pub state: Holdstate,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub htlc_expiry: Option<u32>,
+    pub holdinvoices: Vec<HoldInvoiceResponse>,
+}
+
+impl From<HoldLookupResponse> for pb::HoldInvoiceLookupResponse {
+    fn from(c: HoldLookupResponse) -> Self {
+        Self {
+            holdinvoices: c.holdinvoices.into_iter().map(|hi| hi.into()).collect(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct HoldStateResponse {
     pub state: Holdstate,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct HoldInvoiceAcceptedNotification {
+    pub payment_hash: String,
+    pub htlc_expiry: u32,
+}
+impl From<HoldInvoiceAcceptedNotification> for pb::HoldInvoiceAcceptedNotification {
+    fn from(c: HoldInvoiceAcceptedNotification) -> Self {
+        Self {
+            payment_hash: hex::decode(c.payment_hash).unwrap(),
+            htlc_expiry: c.htlc_expiry,
+        }
+    }
 }

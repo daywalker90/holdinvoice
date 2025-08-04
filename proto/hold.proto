@@ -7,11 +7,9 @@ service Hold {
 	rpc HoldInvoiceSettle(HoldInvoiceSettleRequest) returns (HoldInvoiceSettleResponse) {}
 	rpc HoldInvoiceCancel(HoldInvoiceCancelRequest) returns (HoldInvoiceCancelResponse) {}
 	rpc HoldInvoiceLookup(HoldInvoiceLookupRequest) returns (HoldInvoiceLookupResponse) {}
-	
-}
+	rpc HoldInvoiceVersion(HoldInvoiceVersionRequest) returns (HoldInvoiceVersionResponse) {}
 
-message Amount {
-	uint64 msat = 1;
+	rpc SubscribeHoldInvoiceAccepted(HoldInvoiceAcceptedRequest) returns (stream HoldInvoiceAcceptedNotification) {}
 }
 
 enum Holdstate {
@@ -22,12 +20,13 @@ enum Holdstate {
 }
 
 message HoldInvoiceRequest {
-	Amount amount_msat = 10;
+	uint64 amount_msat = 10;
 	string description = 2;
-	string label = 3;
+	// string label = 3;
 	optional uint64 expiry = 7;
-	repeated string fallbacks = 4;
+	// repeated string fallbacks = 4;
 	optional bytes preimage = 5;
+	optional bytes payment_hash = 11;
 	optional uint32 cltv = 6;
 	repeated string exposeprivatechannels = 8;
 	optional bool deschashonly = 9;
@@ -38,16 +37,25 @@ message HoldInvoiceResponse {
 	bytes payment_hash = 2;
 	bytes payment_secret = 3;
 	uint64 expires_at = 4;
-	optional string warning_capacity = 5;
-	optional string warning_offline = 6;
-	optional string warning_deadends = 7;
-	optional string warning_private_unused = 8;
-	optional string warning_mpp = 9;
-	optional uint64 created_index = 10;
+	// optional string warning_capacity = 5;
+	// optional string warning_offline = 6;
+	// optional string warning_deadends = 7;
+	// optional string warning_private_unused = 8;
+	// optional string warning_mpp = 9;
+	// optional uint64 created_index = 10;
+	optional string description = 11;
+	optional bytes description_hash = 12;
+	optional bytes preimage = 13;
+	Holdstate state = 14;
+	optional uint32 htlc_expiry = 15;
+	optional uint64 paid_at = 16;
+	uint64 amount_msat = 17;
+	uint64 created_at = 18;
 }
 
 message HoldInvoiceSettleRequest {
-	bytes payment_hash = 1;
+	optional bytes payment_hash = 1;
+	optional bytes preimage = 2;
 }
 
 message HoldInvoiceSettleResponse {
@@ -63,12 +71,24 @@ message HoldInvoiceCancelResponse {
 }
 
 message HoldInvoiceLookupRequest {
-	bytes payment_hash = 1;
+	optional bytes payment_hash = 1;
 }
 
 message HoldInvoiceLookupResponse {
-	Holdstate state = 1;
-	optional uint32 htlc_expiry = 2;
+	// Holdstate state = 1;
+	// optional uint32 htlc_expiry = 2;
+	repeated HoldInvoiceResponse  holdinvoices= 3;
 }
 
+message HoldInvoiceVersionRequest{}
 
+message HoldInvoiceVersionResponse{
+	string version = 1;
+}
+
+message HoldInvoiceAcceptedRequest{}
+
+message HoldInvoiceAcceptedNotification{
+	bytes payment_hash = 1;
+	uint32 htlc_expiry = 2;
+}

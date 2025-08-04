@@ -34,25 +34,23 @@ def generate_random_number():
     return random.randint(1, 20_000_000_000_000_00_000)
 
 
-def pay_with_thread(node, bolt11, partial_msat=None):
+def xpay_with_thread(node, bolt11, partial_msat=None):
     LOGGER = logging.getLogger(__name__)
     try:
         if partial_msat:
             node.rpc.call(
-                "pay",
+                "xpay",
                 {
-                    "bolt11": bolt11,
-                    "dev_use_shadow": False,
+                    "invstring": bolt11,
                     "retry_for": 20,
                     "partial_msat": partial_msat,
                 },
             )
         else:
             node.rpc.call(
-                "pay",
+                "xpay",
                 {
-                    "bolt11": bolt11,
-                    "dev_use_shadow": False,
+                    "invstring": bolt11,
                     "retry_for": 20,
                 },
             )

@@ -6,12 +6,12 @@ import time
 
 from pyln.testing.fixtures import *  # noqa: F403
 from pyln.testing.utils import mine_funding_to_announce, wait_for
-from util import generate_random_label, get_plugin, pay_with_thread  # noqa: F401
+from util import get_plugin, xpay_with_thread  # noqa: F401
 
 # number of invoices to create, pay, hold and then cancel
 num_iterations = 210
 # seconds to hold the invoices with inflight htlcs
-delay_seconds = 20
+delay_seconds = 30
 # amount to be used in msat
 amount_msat = 1_000_100_000
 
@@ -57,9 +57,9 @@ def test_stress(node_factory, bitcoind, get_plugin):  # noqa: F811
     opened = 0
     batch = 10
     LOGGER.info(
-        f"holdinvoice: Opening {(int(num_iterations / 70) + 1) * batch * len(nodes)} channels..."
+        f"holdinvoice: Opening {(int(num_iterations / 50) + 1) * batch * len(nodes)} channels..."
     )
-    for _ in range(int(num_iterations / 70) + 1):
+    for _ in range(int(num_iterations / 50) + 1):
         for _ in range(batch):
             for node in nodes:
                 res = node.rpc.fundchannel(
@@ -92,14 +92,11 @@ def test_stress(node_factory, bitcoind, get_plugin):  # noqa: F811
 
     LOGGER.info(f"holdinvoice: Creating {num_iterations} invoices...")
     for _ in range(num_iterations):
-        label = generate_random_label()
-
         try:
             invoice = l1.rpc.call(
                 "holdinvoice",
                 {
                     "amount_msat": amount_msat,
-                    "label": label,
                     "description": "masstest",
                     "cltv": 144,
                     "expiry": 3600,
@@ -116,12 +113,15 @@ def test_stress(node_factory, bitcoind, get_plugin):  # noqa: F811
     assert stats["OPEN"] == num_iterations
 
     LOGGER.info(f"holdinvoice: Paying {num_iterations} invoices...")
+    i = 0
     for bolt11 in invoices:
+        i += 1
         # Pay the invoice using a separate thread
         for node in nodes:
             threading.Thread(
-                target=pay_with_thread, args=(node, bolt11, int(amount_msat / 10))
+                target=xpay_with_thread, args=(node, bolt11, int(amount_msat / 10))
             ).start()
+        LOGGER.info(f"Queued {i * len(nodes)}/{num_iterations * len(nodes)} payments")
         time.sleep(1)
 
     LOGGER.info(f"holdinvoice: Done paying {num_iterations} invoices!")
