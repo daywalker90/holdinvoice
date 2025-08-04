@@ -30,6 +30,7 @@
 - `holdinvoice`: `fallbacks` argument.
 - `holdinvoice`: several return fields are no longer available: ``warning_capacity``, ``warning_offline``, ``warning_deadends``, ``warning_private_unused``, ``warning_mpp``, ``created_index``
 - :warning: `holdinvoice-cancel-before-invoice-expiry`: option removed, we can now settle/cancel invoices after expiry. Make sure to remove this option from your config before starting your node or it will not start.
+- grpc `Amount` message, amounts are just uint64 now
 
 
 ## [4.0.0] - 2025-03-11

@@ -7,7 +7,10 @@ use anyhow::{anyhow, Error};
 use bitcoin::hashes::{sha256, Hash};
 use cln_plugin::Plugin;
 use cln_rpc::{
-    model::requests::{DecodeRequest, ListpeerchannelsRequest},
+    model::{
+        requests::{DecodeRequest, ListpeerchannelsRequest},
+        responses::DecodeType,
+    },
     primitives::ChannelState,
 };
 use lightning_invoice::Bolt11Invoice;
@@ -71,7 +74,6 @@ pub async fn hold_invoice(
                 return Err(e);
             }
         };
-
     let decoded_invoice = match rpc
         .call_typed(&DecodeRequest {
             string: invoice.clone(),
@@ -86,7 +88,7 @@ pub async fn hold_invoice(
         return Err(anyhow!("invalid invoice"));
     }
     let payment_hash: String = match decoded_invoice.item_type {
-        cln_rpc::model::responses::DecodeType::BOLT11_INVOICE => hex::encode(
+        DecodeType::BOLT11_INVOICE => hex::encode(
             decoded_invoice
                 .payment_hash
                 .ok_or_else(|| anyhow!("payment_hash not found in decoded invoice"))?,
@@ -100,6 +102,20 @@ pub async fn hold_invoice(
         return Err(anyhow!("payment_secret not found in decoded invoice"));
     };
 
+    let amount_msat = match decoded_invoice.item_type {
+        DecodeType::BOLT11_INVOICE => decoded_invoice
+            .amount_msat
+            .ok_or_else(|| anyhow!("amount_msat not found in decoded invoice"))?
+            .msat(),
+        _ => return Err(anyhow!("not a bolt11 invoice")),
+    };
+
+    let created_at = match decoded_invoice.item_type {
+        DecodeType::BOLT11_INVOICE => decoded_invoice
+            .created_at
+            .ok_or_else(|| anyhow!("created_at not found in decoded invoice"))?,
+        _ => return Err(anyhow!("not a bolt11 invoice")),
+    };
     let mut response = HoldInvoiceResponse {
         bolt11: invoice,
         payment_hash: payment_hash.clone(),
@@ -111,6 +127,8 @@ pub async fn hold_invoice(
         state: Holdstate::Open,
         htlc_expiry: None,
         paid_at: None,
+        amount_msat,
+        created_at,
     };
 
     datastore_new_hold_invoice(&mut rpc, payment_hash.clone(), response.clone()).await?;

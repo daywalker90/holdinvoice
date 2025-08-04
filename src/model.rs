@@ -16,7 +16,6 @@ use tokio::sync::broadcast;
 
 pub const HOLD_INVOICE_PLUGIN_NAME: &str = "holdinvoice_v2";
 pub const HOLD_INVOICE_ACCEPTED_NOTIFICATION: &str = "holdinvoice_accepted";
-pub const HOLD_STARTUP_LOCK: u64 = 20;
 pub const DEFAULT_CLTV_DELTA: u64 = 144;
 pub const DEFAULT_EXPIRY: u64 = 604_800;
 
@@ -132,43 +131,37 @@ pub struct HoldInvoiceRequest {
 impl From<HoldInvoiceRequest> for pb::HoldInvoiceRequest {
     fn from(c: HoldInvoiceRequest) -> Self {
         Self {
-            amount_msat: Some(pb::Amount {
-                msat: c.amount_msat,
-            }), // Rule #2 for type msat_or_any
-            description: c.description, // Rule #2 for type string
-            expiry: c.expiry,           // Rule #2 for type u64?
+            amount_msat: c.amount_msat,
+            description: c.description,
+            expiry: c.expiry,
             // Field: Invoice.fallbacks[]
             exposeprivatechannels: c
                 .exposeprivatechannels
                 .map(|arr| arr.into_iter().map(|i| i.to_string()).collect())
-                .unwrap_or_default(), // Rule #3
-            preimage: c.preimage.map(|v| hex::decode(v).unwrap()), // Rule #2 for type hex?
-            payment_hash: c.payment_hash.map(|v| hex::decode(v).unwrap()), // Rule #2 for type hex?
-            cltv: c.cltv,                                          // Rule #2 for type u32?
-            deschashonly: c.deschashonly,                          // Rule #2 for type boolean?
+                .unwrap_or_default(),
+            preimage: c.preimage.map(|v| hex::decode(v).unwrap()),
+            payment_hash: c.payment_hash.map(|v| hex::decode(v).unwrap()),
+            cltv: c.cltv,
+            deschashonly: c.deschashonly,
         }
     }
 }
 impl From<pb::HoldInvoiceRequest> for HoldInvoiceRequest {
     fn from(c: pb::HoldInvoiceRequest) -> Self {
         Self {
-            amount_msat: if let Some(amount) = c.amount_msat {
-                amount.msat
-            } else {
-                0
-            },
-            description: c.description, // Rule #1 for type string
-            expiry: c.expiry,           // Rule #1 for type u64?
+            amount_msat: c.amount_msat,
+            description: c.description,
+            expiry: c.expiry,
             exposeprivatechannels: Some(
                 c.exposeprivatechannels
                     .into_iter()
                     .map(|s| cln_rpc::primitives::ShortChannelId::from_str(&s).unwrap())
                     .collect(),
-            ), // Rule #4
-            preimage: c.preimage.map(hex::encode), // Rule #1 for type hex?
-            payment_hash: c.payment_hash.map(hex::encode), // Rule #1 for type hex?
-            cltv: c.cltv,               // Rule #1 for type u32?
-            deschashonly: c.deschashonly, // Rule #1 for type boolean?
+            ),
+            preimage: c.preimage.map(hex::encode),
+            payment_hash: c.payment_hash.map(hex::encode),
+            cltv: c.cltv,
+            deschashonly: c.deschashonly,
         }
     }
 }
@@ -176,8 +169,10 @@ impl From<pb::HoldInvoiceRequest> for HoldInvoiceRequest {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct HoldInvoiceResponse {
     pub bolt11: String,
+    pub amount_msat: u64,
     pub payment_hash: String,
     pub payment_secret: String,
+    pub created_at: u64,
     pub expires_at: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub preimage: Option<String>,
@@ -205,6 +200,8 @@ impl From<HoldInvoiceResponse> for pb::HoldInvoiceResponse {
             state: c.state.as_i32(),
             htlc_expiry: c.htlc_expiry,
             paid_at: c.paid_at,
+            amount_msat: c.amount_msat,
+            created_at: c.created_at,
         }
     }
 }

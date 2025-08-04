@@ -10,7 +10,7 @@ use cln_plugin::{Builder, ConfiguredPlugin};
 use cln_rpc::model::requests::GetinfoRequest;
 use cln_rpc::ClnRpc;
 use lightning_invoice::Currency;
-use model::{PluginState, HOLD_STARTUP_LOCK};
+use model::PluginState;
 use parking_lot::Mutex;
 use std::collections::BTreeMap;
 use std::error::Error;
@@ -51,6 +51,13 @@ const OPT_CANCEL_HOLD_BEFORE_HTLC_EXPIRY_BLOCKS: DefaultIntegerConfigOption =
         "Number of blocks before expiring htlcs get auto-canceled and invoice is canceled",
     );
 
+const OPT_HOLD_STARTUP_LOCK: DefaultIntegerConfigOption = ConfigOption::new_i64_with_default(
+    "holdinvoice-startup-lock",
+    20,
+    "Number of seconds to wait before responding to rpc commands, \
+      to give the plugin a chance to process HTLC's during a node restart",
+);
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), anyhow::Error> {
     std::env::set_var(
@@ -62,6 +69,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let plugin = match Builder::new(tokio::io::stdin(), tokio::io::stdout())
         .option(OPT_GRPC_HOLD_PORT)
         .option(OPT_CANCEL_HOLD_BEFORE_HTLC_EXPIRY_BLOCKS)
+        .option(OPT_HOLD_STARTUP_LOCK)
         .rpcmethod(
             "holdinvoice-version",
             "get holdinvoice plugin version",
@@ -157,7 +165,10 @@ async fn main() -> Result<(), anyhow::Error> {
 
     {
         let _startup_lock = confplugin.state().method_rpc.lock().await;
-        time::sleep(Duration::from_secs(HOLD_STARTUP_LOCK)).await;
+        time::sleep(Duration::from_secs(
+            confplugin.option(&OPT_HOLD_STARTUP_LOCK).unwrap() as u64,
+        ))
+        .await;
     }
 
     confplugin.join().await

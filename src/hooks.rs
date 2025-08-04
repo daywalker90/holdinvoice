@@ -14,9 +14,9 @@ use serde_json::json;
 use tokio::time::{self};
 
 use crate::{
-    model::{HoldHtlc, HoldInvoice, HtlcIdentifier, PluginState, HOLD_STARTUP_LOCK},
+    model::{HoldHtlc, HoldInvoice, HtlcIdentifier, PluginState},
     rpc::datastore_update_state,
-    OPT_CANCEL_HOLD_BEFORE_HTLC_EXPIRY_BLOCKS,
+    OPT_CANCEL_HOLD_BEFORE_HTLC_EXPIRY_BLOCKS, OPT_HOLD_STARTUP_LOCK,
 };
 use crate::{
     model::{HoldInvoiceAcceptedNotification, HOLD_INVOICE_ACCEPTED_NOTIFICATION},
@@ -332,7 +332,7 @@ async fn loop_htlc_hold(
                     if invoice.is_expired()
                         && plugin.state().startup_time
                             < SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs()
-                                - HOLD_STARTUP_LOCK
+                                - (plugin.option(&OPT_HOLD_STARTUP_LOCK)? as u64)
                     {
                         log::info!(
                             "payment_hash: `{}` Invoice expired before enough \

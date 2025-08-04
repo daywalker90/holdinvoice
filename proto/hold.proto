@@ -12,10 +12,6 @@ service Hold {
 	rpc SubscribeHoldInvoiceAccepted(HoldInvoiceAcceptedRequest) returns (stream HoldInvoiceAcceptedNotification) {}
 }
 
-message Amount {
-	uint64 msat = 1;
-}
-
 enum Holdstate {
 	OPEN = 0;
 	SETTLED = 1;
@@ -24,7 +20,7 @@ enum Holdstate {
 }
 
 message HoldInvoiceRequest {
-	Amount amount_msat = 10;
+	uint64 amount_msat = 10;
 	string description = 2;
 	// string label = 3;
 	optional uint64 expiry = 7;
@@ -53,6 +49,8 @@ message HoldInvoiceResponse {
 	Holdstate state = 14;
 	optional uint32 htlc_expiry = 15;
 	optional uint64 paid_at = 16;
+	uint64 amount_msat = 17;
+	uint64 created_at = 18;
 }
 
 message HoldInvoiceSettleRequest {

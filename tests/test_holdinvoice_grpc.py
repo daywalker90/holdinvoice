@@ -76,7 +76,7 @@ def test_inputs(node_factory, bitcoind, get_plugin):  # noqa: F811
 
     request = holdrpc.HoldInvoiceRequest(
         description="Valid invoice description",
-        amount_msat=holdrpc.Amount(msat=1000000),
+        amount_msat=1000000,
         cltv=144,
     )
     result = hold_stub.HoldInvoice(request)
@@ -86,7 +86,7 @@ def test_inputs(node_factory, bitcoind, get_plugin):  # noqa: F811
 
     request = holdrpc.HoldInvoiceRequest(
         description="",
-        amount_msat=holdrpc.Amount(msat=1000000),
+        amount_msat=1000000,
         cltv=144,
     )
     result = hold_stub.HoldInvoice(request)
@@ -102,7 +102,7 @@ def test_inputs(node_factory, bitcoind, get_plugin):  # noqa: F811
 
     random_hex = secrets.token_hex(32)
     request = holdrpc.HoldInvoiceRequest(
-        amount_msat=holdrpc.Amount(msat=2000000),
+        amount_msat=2000000,
         description="Invoice with optional fields",
         expiry=3600,
         preimage=bytes.fromhex(random_hex),
@@ -121,7 +121,7 @@ def test_inputs(node_factory, bitcoind, get_plugin):  # noqa: F811
 
     random_hex = secrets.token_hex(32)
     request = holdrpc.HoldInvoiceRequest(
-        amount_msat=holdrpc.Amount(msat=2000000),
+        amount_msat=2000000,
         description="Invoice with optional fields 2",
         expiry=3600,
         payment_hash=bytes.fromhex(random_hex),
@@ -140,7 +140,7 @@ def test_inputs(node_factory, bitcoind, get_plugin):  # noqa: F811
     # 0 amount_msat
     request = holdrpc.HoldInvoiceRequest(
         description="Invalid amount",
-        amount_msat=holdrpc.Amount(msat=0),
+        amount_msat=0,
         cltv=144,
     )
     with pytest.raises(
@@ -151,7 +151,7 @@ def test_inputs(node_factory, bitcoind, get_plugin):  # noqa: F811
 
     request = holdrpc.HoldInvoiceRequest(
         description="Expose private channel",
-        amount_msat=holdrpc.Amount(msat=1000000),
+        amount_msat=1000000,
         cltv=144,
         exposeprivatechannels=[cl2],
     )
@@ -261,7 +261,7 @@ def test_valid_hold_then_settle(node_factory, bitcoind, get_plugin):  # noqa: F8
     inv_amt = 1_000_100_000
     request = holdrpc.HoldInvoiceRequest(
         description="Valid invoice description",
-        amount_msat=holdrpc.Amount(msat=inv_amt),
+        amount_msat=inv_amt,
         cltv=144,
     )
     result = hold_stub.HoldInvoice(request)
@@ -419,7 +419,7 @@ def test_valid_hold_then_cancel(node_factory, bitcoind, get_plugin):  # noqa: F8
     inv_amt = 1_000_100_000
     request = holdrpc.HoldInvoiceRequest(
         description="Valid invoice description",
-        amount_msat=holdrpc.Amount(msat=inv_amt),
+        amount_msat=inv_amt,
         cltv=144,
     )
     result = hold_stub.HoldInvoice(request)
