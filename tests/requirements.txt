@@ -1,2 +1,0 @@
-grpcio-tools==1.*
-grpcio==1.*
