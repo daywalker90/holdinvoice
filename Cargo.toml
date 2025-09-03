@@ -2,7 +2,7 @@
 edition = "2021"
 name = "holdinvoice"
 version = "4.0.0"
-rust-version = "1.75"
+rust-version = "1.85"
 
 [dependencies]
 anyhow = "1.0"
