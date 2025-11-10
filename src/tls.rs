@@ -1,8 +1,9 @@
 //! Utilities to manage TLS certificates.
+use std::path::Path;
+
 use anyhow::{Context, Result};
 use log::debug;
 use rcgen::{Certificate, KeyPair};
-use std::path::Path;
 
 /// Just a wrapper around a certificate and an associated keypair.
 #[derive(Clone, Debug)]
@@ -65,8 +66,7 @@ fn generate_or_load_identity(
     filename: &str,
     parent: Option<&Identity>,
 ) -> Result<Identity> {
-    use std::io::Write;
-    use std::os::unix::fs::PermissionsExt;
+    use std::{io::Write, os::unix::fs::PermissionsExt};
     // Just our naming convention here.
     let cert_path = directory.join(format!("{}.pem", filename));
     let key_path = directory.join(format!("{}-key.pem", filename));

@@ -1,19 +1,22 @@
-use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
-use std::str::FromStr;
-
-use crate::model::PluginState;
-use crate::{
-    errors::*, OPT_CANCEL_HOLD_BEFORE_HTLC_EXPIRY_BLOCKS,
-    OPT_CANCEL_HOLD_BEFORE_INVOICE_EXPIRY_SECONDS,
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+    str::FromStr,
 };
 
 use cln_plugin::Plugin;
-use cln_rpc::model::requests::InvoiceRequest;
-use cln_rpc::primitives::{Amount, AmountOrAny, ShortChannelId};
+use cln_rpc::{
+    model::requests::InvoiceRequest,
+    primitives::{Amount, AmountOrAny, ShortChannelId},
+};
 use serde_json::json;
 
-use crate::model::{HoldInvoice, HtlcIdentifier};
+use crate::{
+    errors::*,
+    model::{HoldInvoice, HtlcIdentifier, PluginState},
+    OPT_CANCEL_HOLD_BEFORE_HTLC_EXPIRY_BLOCKS,
+    OPT_CANCEL_HOLD_BEFORE_INVOICE_EXPIRY_SECONDS,
+};
 
 pub fn make_rpc_path(plugin: Plugin<PluginState>) -> PathBuf {
     Path::new(&plugin.configuration().lightning_dir).join(plugin.configuration().rpc_file)

@@ -1,14 +1,17 @@
 use anyhow::anyhow;
 use cln_plugin::Error;
-use cln_rpc::model::requests::{
-    DatastoreMode, DatastoreRequest, DeldatastoreRequest, ListdatastoreRequest,
-};
-use cln_rpc::RpcError;
 use cln_rpc::{
-    model::responses::{
-        DatastoreResponse, DeldatastoreResponse, ListdatastoreDatastore, ListdatastoreResponse,
+    model::{
+        requests::{DatastoreMode, DatastoreRequest, DeldatastoreRequest, ListdatastoreRequest},
+        responses::{
+            DatastoreResponse,
+            DeldatastoreResponse,
+            ListdatastoreDatastore,
+            ListdatastoreResponse,
+        },
     },
     ClnRpc,
+    RpcError,
 };
 
 use crate::model::{HOLD_INVOICE_DATASTORE_STATE, HOLD_INVOICE_PLUGIN_NAME};

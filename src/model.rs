@@ -1,9 +1,10 @@
 use std::{
     collections::{BTreeMap, HashMap},
+    fmt,
+    str::FromStr,
     sync::Arc,
 };
 
-use crate::{pb, tls::Identity};
 use anyhow::anyhow;
 use bitcoin::hashes::sha256::Hash as Sha256;
 use cln_plugin::Error;
@@ -14,8 +15,8 @@ use cln_rpc::{
 };
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
-use std::fmt;
-use std::str::FromStr;
+
+use crate::{pb, tls::Identity};
 
 pub const HOLD_INVOICE_PLUGIN_NAME: &str = "holdinvoice";
 pub const HOLD_INVOICE_DATASTORE_STATE: &str = "state";

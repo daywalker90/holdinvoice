@@ -1,16 +1,16 @@
 use std::time::Duration;
 
 use anyhow::Error;
-
 use cln_plugin::Plugin;
-use cln_rpc::model::requests::ListinvoicesRequest;
-use cln_rpc::ClnRpc;
+use cln_rpc::{model::requests::ListinvoicesRequest, ClnRpc};
 use log::info;
 use tokio::time::{self, Instant};
 
-use crate::model::PluginState;
-use crate::rpc::{del_datastore_state, listdatastore_all};
-use crate::util::make_rpc_path;
+use crate::{
+    model::PluginState,
+    rpc::{del_datastore_state, listdatastore_all},
+    util::make_rpc_path,
+};
 
 pub async fn autoclean_holdinvoice_db(plugin: Plugin<PluginState>) -> Result<(), Error> {
     time::sleep(Duration::from_secs(120)).await;

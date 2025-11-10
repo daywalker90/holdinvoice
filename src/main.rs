@@ -1,25 +1,33 @@
 #![recursion_limit = "1024"]
-use crate::model::Holdstate;
-use crate::pb::hold_server::HoldServer;
-use crate::util::make_rpc_path;
+use std::{
+    collections::BTreeMap,
+    error::Error,
+    net::SocketAddr,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::Duration,
+};
+
 use anyhow::{anyhow, Context, Result};
-use cln_plugin::options::{ConfigOption, DefaultIntegerConfigOption, IntegerConfigOption};
-use cln_plugin::Plugin;
-use cln_plugin::{Builder, ConfiguredPlugin};
+use cln_plugin::{
+    options::{ConfigOption, DefaultIntegerConfigOption, IntegerConfigOption},
+    Builder,
+    ConfiguredPlugin,
+    Plugin,
+};
 use cln_rpc::ClnRpc;
 use log::{debug, info, warn};
 use model::{PluginState, HOLD_STARTUP_LOCK};
 use parking_lot::Mutex;
-use std::collections::BTreeMap;
-use std::error::Error;
-use std::net::SocketAddr;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::time::Duration;
 use tls::do_certificates_exist;
 use tokio::time;
 
-use crate::hold::{hold_invoice, hold_invoice_cancel, hold_invoice_lookup, hold_invoice_settle};
+use crate::{
+    hold::{hold_invoice, hold_invoice_cancel, hold_invoice_lookup, hold_invoice_settle},
+    model::Holdstate,
+    pb::hold_server::HoldServer,
+    util::make_rpc_path,
+};
 
 mod config;
 mod errors;

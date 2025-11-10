@@ -2,7 +2,9 @@ use anyhow::{anyhow, Error};
 use cln_plugin::ConfiguredPlugin;
 
 use crate::{
-    errors::config_value_error, model::PluginState, OPT_CANCEL_HOLD_BEFORE_HTLC_EXPIRY_BLOCKS,
+    errors::config_value_error,
+    model::PluginState,
+    OPT_CANCEL_HOLD_BEFORE_HTLC_EXPIRY_BLOCKS,
     OPT_CANCEL_HOLD_BEFORE_INVOICE_EXPIRY_SECONDS,
 };
 
