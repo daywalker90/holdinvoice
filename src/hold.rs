@@ -280,7 +280,10 @@ pub async fn hold_invoice_lookup(
             loop {
                 let mut all_cancelled = true;
                 let channels = rpc
-                    .call_typed(&ListpeerchannelsRequest { id: None })
+                    .call_typed(&ListpeerchannelsRequest {
+                        id: None,
+                        short_channel_id: None,
+                    })
                     .await?
                     .channels;
 

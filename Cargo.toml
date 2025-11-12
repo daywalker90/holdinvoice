@@ -14,9 +14,9 @@ parking_lot = "0.12"
 # rand = "0.8"
 rcgen = { version = "0.13", features = ["pem", "x509-parser"] }
 
-cln-rpc = "0.4"
+cln-rpc = "0.5"
 # cln-rpc = { path="../lightning/cln-rpc/", version = "^0.3" }
-cln-plugin = "0.4"
+cln-plugin = "0.5"
 # cln-plugin = { path="../lightning/plugins/", version = "^0.3" }
 
 hex = "0.4"
