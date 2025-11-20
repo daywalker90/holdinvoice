@@ -341,11 +341,7 @@ pub async fn hold_invoice_lookup(
                                 "holdinvoicelookup: Invoice expired while trying to settle!"
                             ));
                         }
-                        ListinvoicesInvoicesStatus::UNPAID => {
-                            return Err(anyhow!(
-                                "holdinvoicelookup: Invoice unpaid! Expected to be paid!"
-                            ));
-                        }
+                        ListinvoicesInvoicesStatus::UNPAID => (),
                     }
                 }
 

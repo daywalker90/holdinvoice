@@ -12,7 +12,6 @@ import hold_pb2_grpc as holdstub
 import pytest
 from grpc._channel import _InactiveRpcError
 from pyln.testing.fixtures import *  # noqa: F403
-from pyln.testing.utils import sync_blockheight
 from util import (
     find_unused_port,
     generate_random_label,
@@ -274,11 +273,6 @@ def test_valid_hold_then_settle(node_factory, bitcoind, get_plugin):  # noqa: F8
     assert result_settle is not None
     assert isinstance(result_settle, holdrpc.HoldInvoiceSettleResponse) is True
     assert result_settle.state == holdrpc.Holdstate.SETTLED
-
-    time.sleep(3)
-
-    bitcoind.generate_block(144)
-    sync_blockheight(bitcoind, [l1, l2])
 
     request_lookup = holdrpc.HoldInvoiceLookupRequest(payment_hash=result.payment_hash)
     result_lookup = hold_stub.HoldInvoiceLookup(request_lookup)

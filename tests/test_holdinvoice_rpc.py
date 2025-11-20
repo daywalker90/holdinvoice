@@ -292,11 +292,6 @@ def test_valid_hold_then_settle(node_factory, bitcoind, get_plugin):  # noqa: F8
     assert isinstance(result_settle, dict) is True
     assert result_settle["state"] == "SETTLED"
 
-    time.sleep(3)
-
-    bitcoind.generate_block(144)
-    sync_blockheight(bitcoind, [l1, l2])
-
     result_lookup = l2.rpc.call(
         "holdinvoicelookup", {"payment_hash": invoice["payment_hash"]}
     )
@@ -406,11 +401,6 @@ def test_fc_hold_then_settle(node_factory, bitcoind, get_plugin):  # noqa: F811
     assert result_settle is not None
     assert isinstance(result_settle, dict) is True
     assert result_settle["state"] == "SETTLED"
-
-    time.sleep(3)
-
-    bitcoind.generate_block(50)
-    sync_blockheight(bitcoind, [l1, l2])
 
     result_lookup = l2.rpc.call(
         "holdinvoicelookup", {"payment_hash": invoice["payment_hash"]}
