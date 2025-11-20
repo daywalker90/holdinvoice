@@ -275,6 +275,8 @@ def test_valid_hold_then_settle(node_factory, bitcoind, get_plugin):  # noqa: F8
     assert isinstance(result_settle, holdrpc.HoldInvoiceSettleResponse) is True
     assert result_settle.state == holdrpc.Holdstate.SETTLED
 
+    time.sleep(3)
+
     bitcoind.generate_block(144)
     sync_blockheight(bitcoind, [l1, l2])
 
