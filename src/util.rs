@@ -12,13 +12,21 @@ use cln_rpc::{
 use serde_json::json;
 
 use crate::{
-    errors::*,
+    errors::{
+        invalid_argument_error,
+        invalid_hash_error,
+        invalid_input_error,
+        invalid_integer_error,
+        invalid_scid_error,
+        missing_parameter_error,
+        too_many_params_error,
+    },
     model::{HoldInvoice, HtlcIdentifier, PluginState},
     OPT_CANCEL_HOLD_BEFORE_HTLC_EXPIRY_BLOCKS,
     OPT_CANCEL_HOLD_BEFORE_INVOICE_EXPIRY_SECONDS,
 };
 
-pub fn make_rpc_path(plugin: Plugin<PluginState>) -> PathBuf {
+pub fn make_rpc_path(plugin: &Plugin<PluginState>) -> PathBuf {
     Path::new(&plugin.configuration().lightning_dir).join(plugin.configuration().rpc_file)
 }
 
@@ -42,10 +50,10 @@ pub fn parse_payment_hash(args: serde_json::Value) -> Result<String, serde_json:
         } else if i.len() != 1 {
             Err(too_many_params_error(i.len(), 1))
         } else if let serde_json::Value::String(s) = i.first().unwrap() {
-            if s.len() != 64 {
-                Err(invalid_hash_error("payment_hash", s))
-            } else {
+            if s.len() == 64 {
                 Ok(s.clone())
+            } else {
+                Err(invalid_hash_error("payment_hash", s))
             }
         } else {
             Err(invalid_hash_error(
@@ -55,17 +63,17 @@ pub fn parse_payment_hash(args: serde_json::Value) -> Result<String, serde_json:
         }
     } else if let serde_json::Value::Object(o) = args {
         let valid_arg_keys = ["payment_hash"];
-        for (k, _v) in o.iter() {
+        for (k, _v) in &o {
             if !valid_arg_keys.contains(&k.as_str()) {
                 return Err(invalid_argument_error(k));
             }
         }
         if let Some(pay_hash) = o.get("payment_hash") {
             if let serde_json::Value::String(s) = pay_hash {
-                if s.len() != 64 {
-                    Err(invalid_hash_error("payment_hash", s))
-                } else {
+                if s.len() == 64 {
                     Ok(s.clone())
+                } else {
+                    Err(invalid_hash_error("payment_hash", s))
                 }
             } else {
                 Err(invalid_hash_error("payment_hash", &pay_hash.to_string()))
@@ -82,12 +90,18 @@ pub fn build_invoice_request(
     args: &serde_json::Value,
     plugin: &Plugin<PluginState>,
 ) -> Result<InvoiceRequest, serde_json::Value> {
-    let cancel_hold_before_invoice_expiry_seconds = plugin
-        .option(&OPT_CANCEL_HOLD_BEFORE_INVOICE_EXPIRY_SECONDS)
-        .unwrap() as u64;
-    let cancel_hold_before_htlc_expiry_blocks = plugin
-        .option(&OPT_CANCEL_HOLD_BEFORE_HTLC_EXPIRY_BLOCKS)
-        .unwrap() as u32;
+    let cancel_hold_before_invoice_expiry_seconds = u64::try_from(
+        plugin
+            .option(&OPT_CANCEL_HOLD_BEFORE_INVOICE_EXPIRY_SECONDS)
+            .unwrap(),
+    )
+    .unwrap();
+    let cancel_hold_before_htlc_expiry_blocks = u32::try_from(
+        plugin
+            .option(&OPT_CANCEL_HOLD_BEFORE_HTLC_EXPIRY_BLOCKS)
+            .unwrap(),
+    )
+    .unwrap();
     let amount_msat = if let Some(amt) = args.get("amount_msat") {
         AmountOrAny::Amount(Amount::from_msat(if let Some(amt_u64) = amt.as_u64() {
             amt_u64
@@ -129,9 +143,8 @@ pub fn build_invoice_request(
                     "message": format!("expiry: needs to be greater than '{}' requested: '{}'",
                     cancel_hold_before_invoice_expiry_seconds, exp_u64)
                 }));
-            } else {
-                exp_u64
             }
+            exp_u64
         } else {
             return Err(invalid_integer_error("expiry", &exp.to_string()));
         })
@@ -144,7 +157,7 @@ pub fn build_invoice_request(
             let mut fbs = Vec::new();
             for fallback in fbcks_arr {
                 if let Some(fb_str) = fallback.as_str() {
-                    fbs.push(fb_str.to_owned())
+                    fbs.push(fb_str.to_owned());
                 } else {
                     return Err(invalid_input_error(&fallback.to_string()));
                 }
@@ -163,10 +176,10 @@ pub fn build_invoice_request(
 
     let preimage = if let Some(preimg) = args.get("preimage") {
         Some(if let Some(preimg_str) = preimg.as_str() {
-            if preimg_str.len() != 64 {
-                return Err(invalid_hash_error("preimage", &preimg.to_string()));
-            } else {
+            if preimg_str.len() == 64 {
                 preimg_str.to_owned()
+            } else {
+                return Err(invalid_hash_error("preimage", &preimg.to_string()));
             }
         } else {
             return Err(invalid_hash_error("preimage", &preimg.to_string()));
@@ -177,14 +190,21 @@ pub fn build_invoice_request(
 
     let cltv = if let Some(c) = args.get("cltv") {
         Some(if let Some(c_u64) = c.as_u64() {
-            if c_u64 as u32 <= cancel_hold_before_htlc_expiry_blocks {
+            if let Ok(c_u32) = u32::try_from(c_u64) {
+                if c_u32 <= cancel_hold_before_htlc_expiry_blocks {
+                    return Err(json!({
+                        "code": -32602,
+                        "message": format!("cltv: needs to be greater than '{}' requested: '{}'",
+                        cancel_hold_before_htlc_expiry_blocks, c_u64)
+                    }));
+                }
+                c_u32
+            } else {
                 return Err(json!({
                     "code": -32602,
-                    "message": format!("cltv: needs to be greater than '{}' requested: '{}'",
-                    cancel_hold_before_htlc_expiry_blocks, c_u64)
+                    "message": format!("cltv: too big '{}' > '{}'",
+                    c_u64, u32::MAX )
                 }));
-            } else {
-                c_u64 as u32
             }
         } else {
             return Err(json!({
@@ -217,7 +237,7 @@ pub fn build_invoice_request(
             for scid_val in expose_arr {
                 if let Some(scid_str) = scid_val.as_str() {
                     if let Ok(scid) = ShortChannelId::from_str(scid_str) {
-                        scids.push(scid)
+                        scids.push(scid);
                     } else {
                         return Err(invalid_scid_error(scid_str));
                     }

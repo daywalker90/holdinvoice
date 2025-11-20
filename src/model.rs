@@ -31,7 +31,7 @@ pub enum Holdstate {
     Accepted,
 }
 impl Holdstate {
-    pub fn as_i32(&self) -> i32 {
+    pub fn as_i32(self) -> i32 {
         match self {
             Holdstate::Open => 0,
             Holdstate::Settled => 1,
@@ -39,7 +39,7 @@ impl Holdstate {
             Holdstate::Accepted => 3,
         }
     }
-    pub fn is_valid_transition(&self, newstate: &Holdstate) -> bool {
+    pub fn is_valid_transition(self, newstate: Holdstate) -> bool {
         match self {
             Holdstate::Open => !matches!(newstate, Holdstate::Settled),
             Holdstate::Settled => matches!(newstate, Holdstate::Settled),
@@ -66,7 +66,7 @@ impl FromStr for Holdstate {
             "settled" => Ok(Holdstate::Settled),
             "canceled" => Ok(Holdstate::Canceled),
             "accepted" => Ok(Holdstate::Accepted),
-            _ => Err(anyhow!("could not parse Holdstate from {}", s)),
+            _ => Err(anyhow!("could not parse Holdstate from {s}")),
         }
     }
 }
@@ -106,7 +106,7 @@ fn is_none_or_empty<T>(f: &Option<Vec<T>>) -> bool
 where
     T: Clone,
 {
-    f.as_ref().map_or(true, |value| value.is_empty())
+    f.as_ref().is_none_or(std::vec::Vec::is_empty)
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

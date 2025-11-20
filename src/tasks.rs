@@ -3,7 +3,6 @@ use std::time::Duration;
 use anyhow::Error;
 use cln_plugin::Plugin;
 use cln_rpc::{model::requests::ListinvoicesRequest, ClnRpc};
-use log::info;
 use tokio::time::{self, Instant};
 
 use crate::{
@@ -14,9 +13,9 @@ use crate::{
 
 pub async fn autoclean_holdinvoice_db(plugin: Plugin<PluginState>) -> Result<(), Error> {
     time::sleep(Duration::from_secs(120)).await;
-    info!("Starting autoclean_holdinvoice_db");
+    log::info!("Starting autoclean_holdinvoice_db");
 
-    let rpc_path = make_rpc_path(plugin.clone());
+    let rpc_path = make_rpc_path(&plugin);
     loop {
         let now = Instant::now();
         let mut count = 0;
@@ -48,7 +47,7 @@ pub async fn autoclean_holdinvoice_db(plugin: Plugin<PluginState>) -> Result<(),
                 }
             }
         }
-        info!(
+        log::info!(
             "cleaned up {} holdinvoice database entries in {}ms",
             count,
             now.elapsed().as_millis()

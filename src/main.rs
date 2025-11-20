@@ -16,7 +16,6 @@ use cln_plugin::{
     Plugin,
 };
 use cln_rpc::ClnRpc;
-use log::{debug, info, warn};
 use model::{PluginState, HOLD_STARTUP_LOCK};
 use parking_lot::Mutex;
 use tls::do_certificates_exist;
@@ -96,33 +95,30 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?
     {
         Some(p) => {
-            info!("verifying config options");
+            log::info!("verifying config options");
             match config::verify_config_options(&p) {
                 Ok(()) => (),
                 Err(e) => {
-                    log_error(e.to_string());
+                    log_error(&e.to_string());
                     return Err(e);
                 }
-            };
+            }
             p
         }
         None => return Err(anyhow!("Error configuring the plugin!")),
     };
 
-    let bind_port = match plugin.option(&OPT_GRPC_HOLD_PORT)? {
-        Some(port) => Some(port),
-        None => {
-            log::info!(
-                "`grpc-hold-port` option not provided, gRPC server will not bind to a port."
-            );
-            None
-        }
+    let bind_port = if let Some(port) = plugin.option(&OPT_GRPC_HOLD_PORT)? {
+        Some(port)
+    } else {
+        log::info!("`grpc-hold-port` option not provided, gRPC server will not bind to a port.");
+        None
     };
 
     let state = match init_plugin_state(&plugin).await {
         Ok(s) => s,
         Err(e) => {
-            log_error(e.to_string());
+            log_error(&e.to_string());
             return Err(e);
         }
     };
@@ -135,24 +131,21 @@ async fn main() -> Result<(), anyhow::Error> {
             tokio::spawn(async move {
                 match tasks::autoclean_holdinvoice_db(cleanupclone).await {
                     Ok(()) => (),
-                    Err(e) => warn!(
-                        "Error in autoclean_holdinvoice_db thread: {}",
-                        e.to_string()
-                    ),
-                };
+                    Err(e) => log::warn!("Error in autoclean_holdinvoice_db thread: {e}"),
+                }
             });
         }
-        Err(e) => return Err(anyhow!("Error starting plugin: {}", e)),
+        Err(e) => return Err(anyhow!("Error starting plugin: {e}")),
     }
 
     if let Some(port) = bind_port {
-        let bind_addr: SocketAddr = format!("0.0.0.0:{}", port).parse()?;
-        let rpc_path = make_rpc_path(confplugin.clone());
+        let bind_addr: SocketAddr = format!("0.0.0.0:{port}").parse()?;
+        let rpc_path = make_rpc_path(&confplugin);
         let grpc_plugin_clone = confplugin.clone();
         tokio::spawn(async move {
             match run_interface(bind_addr, rpc_path, grpc_plugin_clone).await {
-                Ok(_) => log::info!("grpc interface stopped"),
-                Err(e) => log::warn!("{}", e.to_string()),
+                Ok(()) => log::info!("grpc interface stopped"),
+                Err(e) => log::warn!("{e}"),
             }
         });
     }
@@ -206,24 +199,24 @@ async fn run_interface(
     let server = tonic::transport::Server::builder()
         .tls_config(tls)
         .context("configuring tls")?
-        .add_service(HoldServer::new(
-            server::Server::new(&rpc_path, plugin.clone())
-                .await
-                .context("creating HoldServer instance")?,
-        ))
+        .add_service(HoldServer::new(server::Server::new(
+            &rpc_path,
+            plugin.clone(),
+        )))
         .serve(bind_addr);
 
-    debug!(
-        "Connecting to {:?} and serving grpc on {:?}",
-        rpc_path, &bind_addr
+    log::debug!(
+        "Connecting to {} and serving grpc on {:?}",
+        rpc_path.display(),
+        &bind_addr
     );
 
     server
         .await
-        .map_err(|e| anyhow!("Error serving grpc: {} {:?}", e.to_string(), e.source()))
+        .map_err(|e| anyhow!("Error serving grpc: {} {:?}", e, e.source()))
 }
 
-fn log_error(error: String) {
+fn log_error(error: &str) {
     println!(
         "{}",
         serde_json::json!({"jsonrpc": "2.0",

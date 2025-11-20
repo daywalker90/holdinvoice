@@ -2,7 +2,6 @@
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use log::debug;
 use rcgen::{Certificate, KeyPair};
 
 /// Just a wrapper around a certificate and an associated keypair.
@@ -68,14 +67,14 @@ fn generate_or_load_identity(
 ) -> Result<Identity> {
     use std::{io::Write, os::unix::fs::PermissionsExt};
     // Just our naming convention here.
-    let cert_path = directory.join(format!("{}.pem", filename));
-    let key_path = directory.join(format!("{}-key.pem", filename));
+    let cert_path = directory.join(format!("{filename}.pem"));
+    let key_path = directory.join(format!("{filename}-key.pem"));
     // Did we have to generate a new key? In that case we also need to
     // regenerate the certificate
     if !key_path.exists() || !cert_path.exists() {
-        debug!(
-            "Generating a new keypair in {:?}, it didn't exist",
-            &key_path
+        log::debug!(
+            "Generating a new keypair in {}, it didn't exist",
+            key_path.display()
         );
         let keypair = KeyPair::generate()?;
 
@@ -90,9 +89,10 @@ fn generate_or_load_identity(
         file.write_all(keypair.serialize_pem().as_bytes())?;
         drop(file);
 
-        debug!(
-            "Generating a new certificate for key {:?} at {:?}",
-            &key_path, &cert_path
+        log::debug!(
+            "Generating a new certificate for key {} at {}",
+            key_path.display(),
+            cert_path.display()
         );
 
         // Configure the certificate we want.
@@ -121,7 +121,7 @@ fn generate_or_load_identity(
 
     let key = std::fs::read(&key_path)?;
     let certificate = std::fs::read(cert_path)?;
-    Ok(Identity { certificate, key })
+    Ok(Identity { key, certificate })
 }
 
 pub fn do_certificates_exist(cert_dir: &Path) -> bool {

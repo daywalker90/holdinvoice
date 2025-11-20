@@ -5,7 +5,6 @@ use std::{
 
 use anyhow::Result;
 use cln_plugin::Plugin;
-use log::{debug, trace};
 use tonic::{Code, Status};
 
 use crate::{
@@ -23,11 +22,11 @@ pub struct Server {
 }
 
 impl Server {
-    pub async fn new(path: &Path, plugin: Plugin<PluginState>) -> Result<Self> {
-        Ok(Self {
+    pub fn new(path: &Path, plugin: Plugin<PluginState>) -> Self {
+        Self {
             rpc_path: path.to_path_buf(),
             plugin,
-        })
+        }
     }
 }
 
@@ -39,27 +38,27 @@ impl Hold for Server {
     ) -> Result<tonic::Response<pb::HoldInvoiceResponse>, tonic::Status> {
         let req = request.into_inner();
         let req: model::HoldInvoiceRequest = req.into();
-        debug!("Client asked for Holdinvoice");
-        trace!("Holdinvoice request: {:?}", req);
+        log::debug!("Client asked for Holdinvoice");
+        log::trace!("Holdinvoice request: {req:?}");
         let result =
             match hold_invoice(self.plugin.clone(), serde_json::to_value(req).unwrap()).await {
                 Ok(res) => res,
                 Err(e) => {
                     return Err(Status::new(
                         Code::Internal,
-                        format!("Unexpected result {} to method call hold_invoice", e),
+                        format!("Unexpected result {e} to method call hold_invoice"),
                     ));
                 }
             };
-        debug!("{:?}", result);
+        log::debug!("{result:?}");
         match serde_json::from_value::<model::HoldInvoiceResponse>(result.clone()) {
             Ok(r) => {
-                trace!("Holdinvoice response: {:?}", r);
+                log::trace!("Holdinvoice response: {r:?}");
                 Ok(tonic::Response::new(r.into()))
             }
             Err(_r) => Err(Status::new(
                 Code::Internal,
-                format!("Unexpected result {} to method call HoldInvoice", result),
+                format!("Unexpected result {result} to method call HoldInvoice"),
             )),
         }
     }
@@ -69,10 +68,10 @@ impl Hold for Server {
         request: tonic::Request<pb::HoldInvoiceSettleRequest>,
     ) -> Result<tonic::Response<pb::HoldInvoiceSettleResponse>, tonic::Status> {
         let req = request.into_inner();
-        debug!("Client asked for Holdinvoicesettle");
-        debug!("Holdinvoicesettle request: {:?}", req);
+        log::debug!("Client asked for Holdinvoicesettle");
+        log::debug!("Holdinvoicesettle request: {req:?}");
         let pay_hash = hex::encode(req.payment_hash.clone());
-        debug!("payment_hash: {}", pay_hash);
+        log::debug!("payment_hash: {pay_hash}");
         let result = match hold_invoice_settle(
             self.plugin.clone(),
             serde_json::Value::Array(vec![serde_json::Value::String(pay_hash)]),
@@ -83,34 +82,27 @@ impl Hold for Server {
             Err(e) => {
                 return Err(Status::new(
                     Code::Internal,
-                    format!("Unexpected result {} to method call hold_invoice_settle", e),
+                    format!("Unexpected result {e} to method call hold_invoice_settle"),
                 ));
             }
         };
 
-        match result.get("code") {
-            Some(_err) => Err(Status::new(
+        if let Some(_err) = result.get("code") {
+            Err(Status::new(
                 Code::Internal,
-                format!(
-                    "Unexpected result {} to method call hold_invoice_settle",
-                    result
-                ),
-            )),
-            None => {
-                if let Some(state) = result.get("state") {
-                    if let Ok(hs) = Holdstate::from_str(state.as_str().unwrap()) {
-                        let hisr = pb::HoldInvoiceSettleResponse { state: hs.as_i32() };
-                        return Ok(tonic::Response::new(hisr));
-                    }
+                format!("Unexpected result {result} to method call hold_invoice_settle"),
+            ))
+        } else {
+            if let Some(state) = result.get("state") {
+                if let Ok(hs) = Holdstate::from_str(state.as_str().unwrap()) {
+                    let hisr = pb::HoldInvoiceSettleResponse { state: hs.as_i32() };
+                    return Ok(tonic::Response::new(hisr));
                 }
-                Err(Status::new(
-                    Code::Internal,
-                    format!(
-                        "Unexpected result {} to method call hold_invoice_settle",
-                        result
-                    ),
-                ))
             }
+            Err(Status::new(
+                Code::Internal,
+                format!("Unexpected result {result} to method call hold_invoice_settle"),
+            ))
         }
     }
 
@@ -119,10 +111,10 @@ impl Hold for Server {
         request: tonic::Request<pb::HoldInvoiceCancelRequest>,
     ) -> Result<tonic::Response<pb::HoldInvoiceCancelResponse>, tonic::Status> {
         let req = request.into_inner();
-        debug!("Client asked for Holdinvoicecancel");
-        debug!("Holdinvoicecancel request: {:?}", req);
+        log::debug!("Client asked for Holdinvoicecancel");
+        log::debug!("Holdinvoicecancel request: {req:?}");
         let pay_hash = hex::encode(req.payment_hash.clone());
-        debug!("payment_hash: {}", pay_hash);
+        log::debug!("payment_hash: {pay_hash}");
         let result = match hold_invoice_cancel(
             self.plugin.clone(),
             serde_json::Value::Array(vec![serde_json::Value::String(pay_hash)]),
@@ -133,34 +125,27 @@ impl Hold for Server {
             Err(e) => {
                 return Err(Status::new(
                     Code::Internal,
-                    format!("Unexpected result {} to method call hold_invoice_cancel", e),
+                    format!("Unexpected result {e} to method call hold_invoice_cancel"),
                 ));
             }
         };
 
-        match result.get("code") {
-            Some(_err) => Err(Status::new(
+        if let Some(_err) = result.get("code") {
+            Err(Status::new(
                 Code::Internal,
-                format!(
-                    "Unexpected result {} to method call hold_invoice_cancel",
-                    result
-                ),
-            )),
-            None => {
-                if let Some(state) = result.get("state") {
-                    if let Ok(hs) = Holdstate::from_str(state.as_str().unwrap()) {
-                        let hisr = pb::HoldInvoiceCancelResponse { state: hs.as_i32() };
-                        return Ok(tonic::Response::new(hisr));
-                    }
+                format!("Unexpected result {result} to method call hold_invoice_cancel"),
+            ))
+        } else {
+            if let Some(state) = result.get("state") {
+                if let Ok(hs) = Holdstate::from_str(state.as_str().unwrap()) {
+                    let hisr = pb::HoldInvoiceCancelResponse { state: hs.as_i32() };
+                    return Ok(tonic::Response::new(hisr));
                 }
-                Err(Status::new(
-                    Code::Internal,
-                    format!(
-                        "Unexpected result {} to method call hold_invoice_cancel",
-                        result
-                    ),
-                ))
             }
+            Err(Status::new(
+                Code::Internal,
+                format!("Unexpected result {result} to method call hold_invoice_cancel"),
+            ))
         }
     }
 
@@ -169,10 +154,10 @@ impl Hold for Server {
         request: tonic::Request<pb::HoldInvoiceLookupRequest>,
     ) -> Result<tonic::Response<pb::HoldInvoiceLookupResponse>, tonic::Status> {
         let req = request.into_inner();
-        debug!("Client asked for Holdinvoicelookup");
-        debug!("Holdinvoicelookup request: {:?}", req);
+        log::debug!("Client asked for Holdinvoicelookup");
+        log::debug!("Holdinvoicelookup request: {req:?}");
         let pay_hash = hex::encode(req.payment_hash.clone());
-        debug!("payment_hash: {}", pay_hash);
+        log::debug!("payment_hash: {pay_hash}");
         let result = match hold_invoice_lookup(
             self.plugin.clone(),
             serde_json::Value::Array(vec![serde_json::Value::String(pay_hash)]),
@@ -183,42 +168,38 @@ impl Hold for Server {
             Err(e) => {
                 return Err(Status::new(
                     Code::Internal,
-                    format!("Unexpected result {} to method call hold_invoice_cancel", e),
+                    format!("Unexpected result {e} to method call hold_invoice_cancel"),
                 ));
             }
         };
 
-        match result.get("code") {
-            Some(_err) => Err(Status::new(
+        if let Some(_err) = result.get("code") {
+            Err(Status::new(
                 Code::Internal,
-                format!(
-                    "Unexpected result {} to method call hold_invoice_cancel",
-                    result
-                ),
-            )),
-            None => {
-                if let Some(state) = result.get("state") {
-                    if let Ok(hs) = Holdstate::from_str(state.as_str().unwrap()) {
-                        debug!("hs.as_i32:{} hs:{}", hs.as_i32(), hs);
-                        let hisr = pb::HoldInvoiceLookupResponse {
-                            state: hs.as_i32(),
-                            htlc_expiry: if hs == Holdstate::Accepted {
-                                Some(result.get("htlc_expiry").unwrap().as_u64().unwrap() as u32)
-                            } else {
-                                None
-                            },
-                        };
-                        return Ok(tonic::Response::new(hisr));
-                    }
+                format!("Unexpected result {result} to method call hold_invoice_cancel"),
+            ))
+        } else {
+            if let Some(state) = result.get("state") {
+                if let Ok(hs) = Holdstate::from_str(state.as_str().unwrap()) {
+                    log::debug!("hs.as_i32:{} hs:{}", hs.as_i32(), hs);
+                    let hisr = pb::HoldInvoiceLookupResponse {
+                        state: hs.as_i32(),
+                        htlc_expiry: if hs == Holdstate::Accepted {
+                            Some(
+                                u32::try_from(result.get("htlc_expiry").unwrap().as_u64().unwrap())
+                                    .unwrap(),
+                            )
+                        } else {
+                            None
+                        },
+                    };
+                    return Ok(tonic::Response::new(hisr));
                 }
-                Err(Status::new(
-                    Code::Internal,
-                    format!(
-                        "Unexpected result {} to method call hold_invoice_cancel",
-                        result
-                    ),
-                ))
             }
+            Err(Status::new(
+                Code::Internal,
+                format!("Unexpected result {result} to method call hold_invoice_cancel"),
+            ))
         }
     }
 }

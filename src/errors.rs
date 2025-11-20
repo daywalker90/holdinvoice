@@ -1,4 +1,3 @@
-use log::debug;
 use serde_json::json;
 
 use crate::model::Holdstate;
@@ -62,7 +61,7 @@ pub fn too_many_params_error(actual: usize, expected: usize) -> serde_json::Valu
 }
 
 pub fn wrong_hold_state_error(holdstate: Holdstate) -> serde_json::Value {
-    debug!("Holdinvoice is in wrong state: '{}'", holdstate);
+    log::debug!("Holdinvoice is in wrong state: '{holdstate}'");
     json!({
         "code": -32602,
         "message": format!("Holdinvoice is in wrong state: '{}'", holdstate)
@@ -70,5 +69,5 @@ pub fn wrong_hold_state_error(holdstate: Holdstate) -> serde_json::Value {
 }
 
 pub fn config_value_error(name: &str, value: i64) -> String {
-    format!("'{}' is invalid for {}", value, name)
+    format!("'{value}' is invalid for {name}")
 }

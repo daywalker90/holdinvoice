@@ -94,12 +94,10 @@ pub async fn listdatastore_state(
             ]),
         })
         .await?;
-    let data = response.datastore.first().ok_or_else(|| {
-        anyhow!(
-            "empty result for listdatastore_state with pay_hash: {}",
-            pay_hash
-        )
-    })?;
+    let data = response
+        .datastore
+        .first()
+        .ok_or_else(|| anyhow!("empty result for listdatastore_state with pay_hash: {pay_hash}"))?;
     Ok(data.clone())
 }
 

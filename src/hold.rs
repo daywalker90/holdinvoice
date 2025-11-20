@@ -10,12 +10,16 @@ use cln_rpc::{
     primitives::ChannelState,
     ClnRpc,
 };
-use log::{debug, warn};
-use serde_json::json;
+use serde_json::{json, Map};
 use tokio::{time, time::Instant};
 
 use crate::{
-    errors::*,
+    errors::{
+        invalid_argument_error,
+        invalid_input_error,
+        payment_hash_missing_error,
+        wrong_hold_state_error,
+    },
     model::{HoldLookupResponse, HoldStateResponse, PluginState},
     rpc::{datastore_new_state, datastore_update_state_forced, listdatastore_state},
     util::{build_invoice_request, make_rpc_path, parse_payment_hash},
@@ -26,7 +30,7 @@ pub async fn hold_invoice(
     plugin: Plugin<PluginState>,
     args: serde_json::Value,
 ) -> Result<serde_json::Value, Error> {
-    let rpc_path = make_rpc_path(plugin.clone());
+    let rpc_path = make_rpc_path(&plugin);
     let mut rpc = ClnRpc::new(&rpc_path).await?;
 
     let valid_arg_keys = [
@@ -41,7 +45,7 @@ pub async fn hold_invoice(
         "exposeprivatechannels",
     ];
 
-    let mut new_args = serde_json::Value::Object(Default::default());
+    let mut new_args = serde_json::Value::Object(Map::default());
     match args {
         serde_json::Value::Array(a) => {
             for (idx, arg) in a.iter().enumerate() {
@@ -51,7 +55,7 @@ pub async fn hold_invoice(
             }
         }
         serde_json::Value::Object(o) => {
-            for (k, v) in o.iter() {
+            for (k, v) in &o {
                 if !valid_arg_keys.contains(&k.as_str()) {
                     return Ok(invalid_argument_error(k));
                 }
@@ -59,7 +63,7 @@ pub async fn hold_invoice(
             }
         }
         _ => return Ok(invalid_input_error(&args.to_string())),
-    };
+    }
 
     let inv_req = match build_invoice_request(&new_args, &plugin) {
         Ok(i) => i,
@@ -88,7 +92,7 @@ pub async fn hold_invoice_settle(
             break;
         }
     }
-    let rpc_path = make_rpc_path(plugin.clone());
+    let rpc_path = make_rpc_path(&plugin);
     let mut rpc = ClnRpc::new(&rpc_path).await?;
 
     let pay_hash = match parse_payment_hash(args) {
@@ -96,14 +100,13 @@ pub async fn hold_invoice_settle(
         Err(e) => return Ok(e),
     };
 
-    let data = match listdatastore_state(&mut rpc, pay_hash.clone()).await {
-        Ok(d) => d,
-        Err(_) => return Ok(payment_hash_missing_error(&pay_hash)),
+    let Ok(data) = listdatastore_state(&mut rpc, pay_hash.clone()).await else {
+        return Ok(payment_hash_missing_error(&pay_hash));
     };
 
     let holdstate = Holdstate::from_str(&data.string.unwrap())?;
 
-    if holdstate.is_valid_transition(&Holdstate::Settled) {
+    if holdstate.is_valid_transition(Holdstate::Settled) {
         let result = datastore_update_state_forced(
             &mut rpc,
             pay_hash.clone(),
@@ -114,17 +117,13 @@ pub async fn hold_invoice_settle(
             Ok(_r) => {
                 let mut holdinvoices = plugin.state().holdinvoices.lock().await;
                 if let Some(invoice) = holdinvoices.get_mut(&pay_hash) {
-                    for (_, htlc) in invoice.htlc_data.iter_mut() {
+                    for htlc in invoice.htlc_data.values_mut() {
                         *htlc.loop_mutex.lock().await = true;
                     }
                 } else {
-                    warn!(
-                        "payment_hash: '{}' DROPPED INVOICE from internal state!",
-                        pay_hash
-                    );
+                    log::warn!("payment_hash: '{pay_hash}' DROPPED INVOICE from internal state!");
                     return Err(anyhow!(
-                        "Invoice dropped from internal state unexpectedly: {}",
-                        pay_hash
+                        "Invoice dropped from internal state unexpectedly: {pay_hash}"
                     ));
                 }
 
@@ -133,13 +132,9 @@ pub async fn hold_invoice_settle(
                 }))
             }
             Err(e) => {
-                debug!(
-                    "Unexpected result {} to method call datastore_update_state_forced",
-                    e.to_string()
-                );
+                log::debug!("Unexpected result {e} to method call datastore_update_state_forced");
                 Err(anyhow!(
-                    "Unexpected result {} to method call datastore_update_state_forced",
-                    e.to_string()
+                    "Unexpected result {e} to method call datastore_update_state_forced"
                 ))
             }
         }
@@ -159,7 +154,7 @@ pub async fn hold_invoice_cancel(
             break;
         }
     }
-    let rpc_path = make_rpc_path(plugin.clone());
+    let rpc_path = make_rpc_path(&plugin);
     let mut rpc = ClnRpc::new(&rpc_path).await?;
 
     let pay_hash = match parse_payment_hash(args) {
@@ -167,14 +162,13 @@ pub async fn hold_invoice_cancel(
         Err(e) => return Ok(e),
     };
 
-    let data = match listdatastore_state(&mut rpc, pay_hash.clone()).await {
-        Ok(d) => d,
-        Err(_) => return Ok(payment_hash_missing_error(&pay_hash)),
+    let Ok(data) = listdatastore_state(&mut rpc, pay_hash.clone()).await else {
+        return Ok(payment_hash_missing_error(&pay_hash));
     };
 
     let holdstate = Holdstate::from_str(&data.string.unwrap())?;
 
-    if holdstate.is_valid_transition(&Holdstate::Canceled) {
+    if holdstate.is_valid_transition(Holdstate::Canceled) {
         let result = datastore_update_state_forced(
             &mut rpc,
             pay_hash.clone(),
@@ -185,7 +179,7 @@ pub async fn hold_invoice_cancel(
             Ok(_r) => {
                 let mut holdinvoices = plugin.state().holdinvoices.lock().await;
                 if let Some(invoice) = holdinvoices.get_mut(&pay_hash) {
-                    for (_, htlc) in invoice.htlc_data.iter_mut() {
+                    for htlc in invoice.htlc_data.values_mut() {
                         *htlc.loop_mutex.lock().await = true;
                     }
                 }
@@ -195,8 +189,7 @@ pub async fn hold_invoice_cancel(
                 }))
             }
             Err(e) => Err(anyhow!(
-                "Unexpected result {} to method call datastore_update_state_forced",
-                e.to_string()
+                "Unexpected result {e} to method call datastore_update_state_forced"
             )),
         }
     } else {
@@ -215,7 +208,7 @@ pub async fn hold_invoice_lookup(
             break;
         }
     }
-    let rpc_path = make_rpc_path(plugin.clone());
+    let rpc_path = make_rpc_path(&plugin);
     let mut rpc = ClnRpc::new(&rpc_path).await?;
 
     let pay_hash = match parse_payment_hash(args) {
@@ -223,9 +216,8 @@ pub async fn hold_invoice_lookup(
         Err(e) => return Ok(e),
     };
 
-    let data = match listdatastore_state(&mut rpc, pay_hash.clone()).await {
-        Ok(d) => d,
-        Err(_) => return Ok(payment_hash_missing_error(&pay_hash)),
+    let Ok(data) = listdatastore_state(&mut rpc, pay_hash.clone()).await else {
+        return Ok(payment_hash_missing_error(&pay_hash));
     };
 
     let holdstate = Holdstate::from_str(&data.string.unwrap())?;
@@ -273,7 +265,7 @@ pub async fn hold_invoice_lookup(
             } else {
                 return Ok(payment_hash_missing_error(&pay_hash));
             };
-            htlc_expiry = Some(next_expiry)
+            htlc_expiry = Some(next_expiry);
         }
         Holdstate::Canceled => {
             let now = Instant::now();
@@ -295,9 +287,7 @@ pub async fn hold_invoice_lookup(
                         continue;
                     }
 
-                    let htlcs = if let Some(h) = chan.htlcs {
-                        h
-                    } else {
+                    let Some(htlcs) = chan.htlcs else {
                         continue;
                     };
                     for htlc in htlcs {
@@ -322,7 +312,7 @@ pub async fn hold_invoice_lookup(
                     ));
                 }
 
-                time::sleep(Duration::from_secs(2)).await
+                time::sleep(Duration::from_secs(2)).await;
             }
         }
         Holdstate::Settled => {
@@ -351,7 +341,11 @@ pub async fn hold_invoice_lookup(
                                 "holdinvoicelookup: Invoice expired while trying to settle!"
                             ));
                         }
-                        _ => (),
+                        ListinvoicesInvoicesStatus::UNPAID => {
+                            return Err(anyhow!(
+                                "holdinvoicelookup: Invoice unpaid! Expected to be paid!"
+                            ));
+                        }
                     }
                 }
 
@@ -361,7 +355,7 @@ pub async fn hold_invoice_lookup(
                     ));
                 }
 
-                time::sleep(Duration::from_secs(2)).await
+                time::sleep(Duration::from_secs(2)).await;
             }
         }
     }
