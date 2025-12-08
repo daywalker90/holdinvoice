@@ -49,6 +49,9 @@
   </tr>
 </table>
 
+
+# This plugin is archived please use [hold](https://github.com/BoltzExchange/hold) instead
+
 # holdinvoice
 Core lightning (CLN) plugin to hold invoices. Supports rpc and grpc.
 
